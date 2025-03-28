@@ -1,3 +1,7 @@
+data/
+*.DS_Store
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -172,3 +176,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+data/mimic_iii/mimic_iii.db
