@@ -1,12 +1,47 @@
 import sqlite3
-from typing import Optional
+from abc import ABC, ABCMeta, abstractmethod
+from typing import Any, Optional
 
 import pandas as pd
 
 
-class DatabaseConnector:
+class BaseDatabaseConnector(ABC):
+    __metaclass__ = ABCMeta
+
+    def __init__(self, connection_string: str) -> None:
+        self.connection_string: str = connection_string
+        self.connection: Optional[Any] = None
+
+    @abstractmethod
+    def connect(self) -> sqlite3.Connection:
+        """Establish a connection to the database."""
+        pass
+
+    @abstractmethod
+    def get_tables(self) -> list:
+        """Retrieve a list of tables in the database."""
+        pass
+
+    @abstractmethod
+    def get_table_schema(self, table_name: str) -> dict:
+        """Get the schema of a specific table."""
+        pass
+
+    @abstractmethod
+    def execute_query(self, query: str) -> pd.DataFrame:
+        """Execute a SQL query and return the result as a DataFrame."""
+        pass
+
+    @abstractmethod
+    def close(self) -> None:
+        """Close the database connection."""
+        pass
+
+
+class DatabaseConnector(BaseDatabaseConnector):
     def __init__(self, db_path: str) -> None:
-        self.db_path: str = db_path
+        super().__init__(db_path)
+        self.db_path = db_path
         self.connection: Optional[sqlite3.Connection] = None
 
     def _ensure_connection(self) -> None:
