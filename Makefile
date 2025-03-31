@@ -6,6 +6,7 @@ format:
 
 lint:
 	flake8 .
+	mypy .
 
 typecheck:
 	mypy .
