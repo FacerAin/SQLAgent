@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Any, Optional
@@ -38,7 +39,7 @@ class BaseDatabaseConnector(ABC):
         pass
 
 
-class DatabaseConnector(BaseDatabaseConnector):
+class SqliteDatabaseConnector(BaseDatabaseConnector):
     def __init__(self, db_path: str) -> None:
         super().__init__(db_path)
         self.db_path = db_path
@@ -49,6 +50,8 @@ class DatabaseConnector(BaseDatabaseConnector):
             raise ConnectionError("Database connection is not established.")
 
     def connect(self) -> sqlite3.Connection:
+        if not os.path.exists(self.db_path):
+            raise FileNotFoundError(f"Database file '{self.db_path}' not found.")
         self.connection = sqlite3.connect(self.db_path)
         self._ensure_connection()
         return self.connection
