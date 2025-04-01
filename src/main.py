@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 
-from src.agent.base import SQLReActAgent
+from src.agent.react import SQLReActAgent
 from src.chat.openai import OpenAIClient
 from src.database.connector import SqliteDatabaseConnector
 from src.utils.logger import init_logger
