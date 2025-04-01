@@ -1,6 +1,6 @@
 [flake8]
 show-source = true
-extend-ignore = E203
+extend-ignore = E203, E501
 exclude =
     # No need to traverse our git directory
     .git,
