@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from openai import Client  # type: ignore
+from openai import Client
 
 from src.chat.base import LLMClientInterface
 
@@ -15,8 +15,8 @@ class OpenAIClient(LLMClientInterface):
 
     def chat(
         self,
-        system_prompt: str,
         user_prompt: str,
+        system_prompt: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
     ) -> str:
