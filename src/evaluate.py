@@ -201,7 +201,7 @@ def calculate_metrics(evaluate_results):
     evaluation_stats = {
         "total_num": 0,
         "correct": 0,
-        "unfinishied": 0,
+        "unfinished": 0,
         "incorrect": 0,
     }
 
