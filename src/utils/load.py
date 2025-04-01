@@ -1,7 +1,31 @@
-from typing import Any, Dict, Optional
+import json
+from typing import Any, Dict, List, Optional
 
 import yaml
 from jinja2 import Template
+
+
+def load_dataset_from_jsonl(
+    file_path: str,
+) -> List[Dict[str, Any]]:
+    try:
+        data = []
+        with open(file_path, "r", encoding="utf-8") as file:
+            for line_num, line in enumerate(file, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                    data.append(item)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Error parsing JSON at line {line_num}: {e}")
+
+        if not data:
+            raise ValueError("The JSONL file is empty.")
+        return data
+    except FileNotFoundError:
+        raise FileNotFoundError(f"The file '{file_path}' was not found.")
 
 
 def load_prompt_from_yaml(
