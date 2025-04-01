@@ -10,8 +10,8 @@ class LLMClientInterface:
     @abstractmethod
     def chat(
         self,
-        system_prompt: str,
         user_prompt: str,
+        system_prompt: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
     ) -> str:
