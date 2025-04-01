@@ -224,8 +224,7 @@ def log_evaluation_results(args, stats):
         logger.info(f"Total Samples: {stats['total_num']}")
         logger.info(f"Correct Answers: {stats['correct']}")
         logger.info(f"Incorrect Answers: {stats['incorrect']}")
-        logger.info(f"Unfinished Answers: {stats['unfinishied']}")
-
+        logger.info(f"Unfinished Answers: {stats['unfinished']}")
         if stats["total_num"] > 0:
             accuracy = stats["correct"] / stats["total_num"]
             logger.info(f"Accuracy: {accuracy:.2%}")
