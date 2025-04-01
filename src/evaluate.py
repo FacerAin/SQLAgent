@@ -210,7 +210,7 @@ def calculate_metrics(evaluate_results):
         if sample["generated_answer"] == sample["expected_answer"]:
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
-            evaluation_stats["unfinishied"] += 1
+            evaluation_stats["unfinished"] += 1
         else:
             evaluation_stats["incorrect"] += 1
 
