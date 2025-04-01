@@ -193,16 +193,18 @@ class SQLReActAgent(BaseAgent):
             turns += 1
 
             llm_response = self.client.chat(
-                system_prompt="You are an SQL expert that follows the ReAct (Reasoning and Acting) framework to solve database questions.",
+                system_prompt=self.prompt,
                 user_prompt=context,
             )
 
             reasoning = self.extract_section(llm_response, "reasoning")
             sql_section = self.extract_section(llm_response, "sql")
-            analysis = self.extract_section(llm_response, "analysis")
             answer = self.extract_section(llm_response, "answer")
-
-            self._log_debug_info(reasoning, "Reasoning")
+            if reasoning:
+                self._log_debug_info(reasoning, "Reasoning")
+                history.append(
+                    {"turn": turns, "action": "reasoning", "reasoning": reasoning}
+                )
 
             if sql_section:
                 sql_query = self.extract_sql_query(sql_section)
@@ -227,24 +229,23 @@ class SQLReActAgent(BaseAgent):
                 )
 
                 observation = self._format_observation(success, result_str)
-                next_instruction = self._get_next_instruction(success)
-                context += f"\n{llm_response}\n{observation}\n{next_instruction}"
+
+            # Add context for agent
+            next_instruction = self._get_next_instruction(
+                success if sql_section else True
+            )
+            observation = observation if sql_section else ""
+            context += f"\n{llm_response}\n{observation}\n{next_instruction}"
 
             if answer:
                 self._log_debug_info(answer, "Final Answer")
                 final_answer = answer
 
-                if analysis:
-                    self._log_debug_info(analysis, "Analysis")
-                    history.append(
-                        {"turn": turns, "action": "analysis", "analysis": analysis}
-                    )
-
                 history.append({"turn": turns, "action": "answer", "answer": answer})
                 break
 
         if not final_answer:
-            final_answer = f"I'm sorry, I couldn't find an answer after {self.max_iterations} attempts."
+            final_answer = "None"
             self._log_debug_info(final_answer, "Max attempts reached. Final answer")
 
         return {
@@ -255,4 +256,6 @@ class SQLReActAgent(BaseAgent):
             "turns": turns,
             "history": history,
             "success": bool(final_answer),
+            "system_prompt": self.prompt,
+            "context": context,
         }
