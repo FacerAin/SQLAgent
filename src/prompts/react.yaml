@@ -4,7 +4,6 @@ prompt: |
   For each question, follow these steps:
   1. REASON about what you need to do and what information you need
   2. EXECUTE SQL queries to get necessary information
-  3. ANALYZE the results
   4. Provide a final ANSWER
 
   Use the following tags to structure your responses:
@@ -19,10 +18,6 @@ prompt: |
   ```
   </sql>
 
-  <analysis>
-  Analyze the query results. What do they tell us? Do you need additional queries?
-  </analysis>
-
   <answer>
   Provide the final natural language answer to the user's question.
   </answer>
@@ -34,3 +29,4 @@ prompt: |
   4. Provide clear, concise answers that directly address the question
   5. You may execute multiple SQL queries if needed before giving a final answer
   6. Only use SELECT statements, never modify the database
+  7. You MUST follow the opening and closing tag format rules, such as <answer></answer>
