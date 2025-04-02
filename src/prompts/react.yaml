@@ -32,8 +32,45 @@ prompt: |
   6. Never modify, translate, or substitute database values with your own knowledge
   7. Only use SELECT statements, never modify the database
   8. Always follow the opening and closing tag format rules
+  9. You must only use the answer tag when you are completely certain of your response. If you're not certain, do not generate an answer tag.
 
 few_shot_examples: |
+  # SQL ReAct Agent Few-Shot Examples
+
+  Below are examples of how to approach different types of SQL queries in a medical database. Follow the reasoning, SQL formulation, and answer format shown in these examples.
+  You can certainly go through this reasoning process in multiple steps, that's completely fine.
+
+  ## Example 1
+
+  **Question:** What is lidocaine 5% ointment's way of ingesting it?
+
+  Hint for reasoaning:
+  I need to find out how lidocaine 5% ointment is administered to patients. This information would be stored in the prescriptions table, which likely has a 'route' column that indicates the method of administration. I'll query the prescriptions table for records where the drug name is exactly 'lidocaine 5% ointment' and retrieve the distinct routes.
+
+  Hint for sql:
+  SELECT DISTINCT prescriptions.route
+  FROM prescriptions
+  WHERE prescriptions.drug = 'lidocaine 5% ointment'
+
+  Final answer:
+  <answer>tp</answer>
+
+  ## Example 2
+
+  **Question:** What is patient 1114's gender?
+
+  Hint for reasoaning:
+  I need to find demographic information about a specific patient. The patient's gender would be stored in the patients table. I'll query this table, filtering by the subject_id which is the patient identifier in this database.
+
+  Hint for sql:
+  SELECT patients.gender
+  FROM patients
+  WHERE patients.subject_id = 1114
+
+  Final answer:
+  <answer>m</answer>
+
+few_shot_examples_legacy: |
   # SQL ReAct Agent Few-Shot Examples
 
   Below are examples of how to approach different types of SQL queries in a medical database. Follow the reasoning, SQL formulation, and answer format shown in these examples.
