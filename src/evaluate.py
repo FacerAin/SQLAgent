@@ -9,72 +9,9 @@ from tqdm import tqdm
 from src.agent.react import SQLReActAgent
 from src.chat.factory import ChatModelFactory
 from src.database.connector import SqliteDatabaseConnector
+from src.evaluation.judge import exact_match, verify_sql_query_equivalent
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
-
-
-def judge(pred: str, ans: List[str]) -> bool:
-    """
-    Judge if the prediction string matches any of the answers in the list.
-
-    Args:
-        pred (str): The prediction string
-        ans (List[str]): The list of possible correct answers
-
-    Returns:
-        bool: True if prediction matches any answer, False otherwise
-    """
-    # Early return if the answer list is empty
-    if not ans:
-        return False
-
-    # Define normalization function
-    def normalize_string(s: str) -> str:
-        return s.replace("True", "1").replace("False", "0")
-
-    # Boolean mapping for normalization
-    boolean_mapping = {
-        "False": "0",
-        "false": "0",
-        "True": "1",
-        "true": "1",
-        "No": "0",
-        "no": "0",
-        "Yes": "1",
-        "yes": "1",
-        "None": "0",
-        "none": "0",
-    }
-
-    # Normalize the prediction
-    normalized_pred = normalize_string(pred)
-
-    # Check each answer against the prediction
-    for answer in ans:
-        # Direct string match check
-        normalized_answer = normalize_string(answer)
-        if normalized_answer in normalized_pred:
-            return True
-
-        # Normalize the answer
-        normalized_ans = answer
-        if answer in boolean_mapping:
-            normalized_ans = boolean_mapping[answer]
-
-        # Handle decimal numbers in answer
-        if normalized_ans.endswith(".0"):
-            normalized_ans = normalized_ans[:-2]
-
-        # Handle multiple comma-separated items within a single answer
-        ans_items = [normalized_ans]
-        if ", " in normalized_ans:
-            ans_items = normalized_ans.split(", ")
-
-        # Check with normalized values
-        if any(item in normalized_pred for item in ans_items):
-            return True
-
-    return False
 
 
 def parse_arguments():
@@ -270,23 +207,34 @@ def log_sample_results(
     logger.info("--------------------------------------------------")
 
 
-def calculate_metrics(evaluate_results: List[Dict[str, Any]]) -> Dict[str, int]:
+def calculate_metrics(
+    evaluate_results: List[Dict[str, Any]], context: EvaluationContext
+) -> Dict[str, int]:
     """Calculate evaluation metrics."""
     evaluation_stats = {
         "total_num": 0,
         "correct": 0,
         "unfinished": 0,
         "incorrect": 0,
+        "sql_equality": 0,
     }
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
         evaluation_stats["total_num"] += 1
-        if judge(pred=sample["generated_answer"], ans=sample["expected_answer"]):
+        if exact_match(pred=sample["generated_answer"], ans=sample["expected_answer"]):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1
         else:
             evaluation_stats["incorrect"] += 1
+
+        # Check SQL equality
+        if verify_sql_query_equivalent(
+            pred_sql_query=sample["sql_query"],
+            gold_sql_query=sample["gold_sql_query"],
+            db_connector=context.db_connector,
+        ):
+            evaluation_stats["sql_equality"] += 1
 
     return evaluation_stats
 
@@ -297,10 +245,8 @@ def log_evaluation_results(
     """Log evaluation results."""
     if args.verbose:
         logger.info("Evaluation Results:")
-        logger.info(f"Total Samples: {stats['total_num']}")
-        logger.info(f"Correct Answers: {stats['correct']}")
-        logger.info(f"Incorrect Answers: {stats['incorrect']}")
-        logger.info(f"Unfinished Answers: {stats['unfinished']}")
+        for key, value in stats.items():
+            logger.info(f"{key}: {value}")
         if stats["total_num"] > 0:
             accuracy = stats["correct"] / stats["total_num"]
             logger.info(f"Accuracy: {accuracy:.2%}")
@@ -388,17 +334,19 @@ def main():
                 save_results(context.logger, args, evaluate_results)
                 logger.info("Skipping metrics calculation as requested")
 
-    # Calculate metrics if not skipped
-    if not args.skip_metrics and evaluate_results:
-        logger.info("Calculating evaluation metrics")
-        evaluation_stats = calculate_metrics(evaluate_results)
+            # Calculate metrics if not skipped
+            if not args.skip_metrics and evaluate_results:
+                logger.info("Calculating evaluation metrics")
+                evaluation_stats = calculate_metrics(evaluate_results, context)
 
-        # Log results
-        log_evaluation_results(logger, args, evaluation_stats)
+                # Log results
+                log_evaluation_results(logger, args, evaluation_stats)
 
-        # Save complete results with metrics if requested and not already saved
-        if args.save_result and not (args.results_path is None and args.skip_metrics):
-            save_results(logger, args, evaluate_results, evaluation_stats)
+                # Save complete results with metrics if requested and not already saved
+                if args.save_result and not (
+                    args.results_path is None and args.skip_metrics
+                ):
+                    save_results(logger, args, evaluate_results, evaluation_stats)
 
 
 if __name__ == "__main__":

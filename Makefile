@@ -11,6 +11,9 @@ lint:
 typecheck:
 	mypy .
 
+test:
+	pytest --tb=short --disable-warnings -p no:warnings
+
 all: format lint typecheck
 
 clean:
