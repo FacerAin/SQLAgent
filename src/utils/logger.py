@@ -1,10 +1,23 @@
 import logging
 import sys
+from typing import Optional
 
 import colorlog
 
 
-def init_logger(log_level: int = logging.INFO, name: str = None) -> logging.Logger:
+def init_token_logger(log_level: int = logging.INFO) -> logging.Logger:
+    """
+    Initialize a specialized logger for tracking token usage with LLM API calls.
+
+    Args:
+        log_level (int): The logging level (e.g., logging.DEBUG, logging.INFO).
+    """
+    return init_logger(log_level=log_level, name="token_usage")
+
+
+def init_logger(
+    log_level: int = logging.INFO, name: Optional[str] = None
+) -> logging.Logger:
     """
     Initialize and configure the logger with custom color support for different parts.
 

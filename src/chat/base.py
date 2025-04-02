@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Optional
+from typing import Dict, Optional
 
 
 class LLMClientInterface:
@@ -15,4 +15,23 @@ class LLMClientInterface:
         temperature: float = 0.0,
         max_tokens: Optional[int] = None,
     ) -> str:
+        """Generate a response from the LLM based on the provided prompts.
+
+        Args:
+            user_prompt: The main prompt from the user
+            system_prompt: Optional system instructions
+            temperature: Controls randomness (0 = deterministic)
+            max_tokens: Maximum length of response
+
+        Returns:
+            The LLM's response as a string
+        """
         pass
+
+    def get_token_usage(self) -> Dict[str, int]:
+        """Get the cumulative token usage statistics.
+
+        Returns:
+            Dictionary with token usage statistics (if implemented)
+        """
+        return {}
