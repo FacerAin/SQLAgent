@@ -12,6 +12,25 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: evaluate.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/evaluate.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--model_id",
+                "gpt-4o-mini",
+                "--num_samples",
+                "3",
+                "--verbose"
+            ]
         }
     ]
 }

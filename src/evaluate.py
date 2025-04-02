@@ -1,5 +1,6 @@
 import argparse
 import json
+from typing import List
 
 from tqdm import tqdm
 
@@ -12,28 +13,26 @@ from src.utils.logger import init_logger
 logger = init_logger()
 
 
-def judge(pred: str, ans: str) -> bool:
+def judge(pred: str, ans: List[str]) -> bool:
     """
-    Judge if the prediction matches the answer.
+    Judge if the prediction string matches any of the answers in the list.
 
     Args:
         pred (str): The prediction string
-        ans (str): The answer string
+        ans (List[str]): The list of possible correct answers
 
     Returns:
-        bool: True if prediction matches answer, False otherwise
+        bool: True if prediction matches any answer, False otherwise
     """
-    # First check if answer is directly contained in prediction
-    if ans in pred:
-        return True
+    # Early return if the answer list is empty
+    if not ans:
+        return False
 
-    # Normalize prediction
-    normalized_pred = pred.replace("True", "1").replace("False", "0")
+    # Define normalization function
+    def normalize_string(s: str) -> str:
+        return s.replace("True", "1").replace("False", "0")
 
-    # Normalize answer
-    normalized_ans = ans
-
-    # Map common boolean and yes/no values to normalized form
+    # Boolean mapping for normalization
     boolean_mapping = {
         "False": "0",
         "false": "0",
@@ -47,20 +46,35 @@ def judge(pred: str, ans: str) -> bool:
         "none": "0",
     }
 
-    if ans in boolean_mapping:
-        normalized_ans = boolean_mapping[ans]
+    # Normalize the prediction
+    normalized_pred = normalize_string(pred)
 
-    # Handle decimal numbers
-    if normalized_ans.endswith(".0"):
-        normalized_ans = normalized_ans[:-2]
+    # Check each answer against the prediction
+    for answer in ans:
+        # Direct string match check
+        normalized_answer = normalize_string(answer)
+        if normalized_answer in normalized_pred:
+            return True
 
-    # Handle multiple answers
-    answer_items = [normalized_ans]
-    if ", " in normalized_ans:
-        answer_items = normalized_ans.split(", ")
+        # Normalize the answer
+        normalized_ans = answer
+        if answer in boolean_mapping:
+            normalized_ans = boolean_mapping[answer]
 
-    # Check if any normalized answer is in the normalized prediction
-    return any(item in normalized_pred for item in answer_items)
+        # Handle decimal numbers in answer
+        if normalized_ans.endswith(".0"):
+            normalized_ans = normalized_ans[:-2]
+
+        # Handle multiple comma-separated items within a single answer
+        ans_items = [normalized_ans]
+        if ", " in normalized_ans:
+            ans_items = normalized_ans.split(", ")
+
+        # Check with normalized values
+        if any(item in normalized_pred for item in ans_items):
+            return True
+
+    return False
 
 
 def parse_arguments():
@@ -108,6 +122,12 @@ def parse_arguments():
         type=int,
         default=5,
         help="Maximum number of reasoning iterations for the agent",
+    )
+
+    parser.add_argument(
+        "--use_few_shot",
+        action="store_true",
+        help="Use few-shot examples for the agent.",
     )
 
     return parser.parse_args()
@@ -162,7 +182,7 @@ def process_samples(args, datasets, agent):
             raise ValueError("Answer is missing in the dataset.")
 
         # Process the question
-        result = agent.process(question)
+        result = agent.process(question, use_few_shot=args.use_few_shot)
 
         # Log the results if verbose
         if args.verbose:
@@ -207,7 +227,7 @@ def calculate_metrics(evaluate_results):
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
         evaluation_stats["total_num"] += 1
-        if sample["generated_answer"] == sample["expected_answer"]:
+        if judge(pred=sample["generated_answer"], ans=sample["expected_answer"]):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1

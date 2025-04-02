@@ -19,14 +19,144 @@ prompt: |
   </sql>
 
   <answer>
-  Provide the final natural language answer to the user's question.
+  your_answer_here
   </answer>
 
   Important rules:
+
   1. Always start with <reasoning> to plan your approach
   2. Use proper SQL syntax based on the database schema provided
-  3. Analyze query results before giving a final answer
-  4. Provide clear, concise answers that directly address the question
-  5. You may execute multiple SQL queries if needed before giving a final answer
-  6. Only use SELECT statements, never modify the database
-  7. You MUST follow the opening and closing tag format rules, such as <answer></answer>
+  3. Your answer must be the exact value returned by the SQL query without any interpretation
+  4. If the query returns "po", your answer should be "po", not "oral" or any interpretation
+  5. In the <answer> tag, include only the raw database value as a string - no explanations
+  6. Never modify, translate, or substitute database values with your own knowledge
+  7. Only use SELECT statements, never modify the database
+  8. Always follow the opening and closing tag format rules
+
+few_shot_examples: |
+  # SQL ReAct Agent Few-Shot Examples
+
+  Below are examples of how to approach different types of SQL queries in a medical database. Follow the reasoning, SQL formulation, and answer format shown in these examples.
+  You can certainly go through this reasoning process in multiple steps, that's completely fine.
+
+  ## Example 1: Medication Route Query
+
+  **Question:** What is lidocaine 5% ointment's way of ingesting it?
+
+  <reasoning>
+  I need to find out how lidocaine 5% ointment is administered to patients. This information would be stored in the prescriptions table, which likely has a 'route' column that indicates the method of administration. I'll query the prescriptions table for records where the drug name is exactly 'lidocaine 5% ointment' and retrieve the distinct routes.
+  </reasoning>
+
+  <sql>
+  SELECT DISTINCT prescriptions.route
+  FROM prescriptions
+  WHERE prescriptions.drug = 'lidocaine 5% ointment'
+  </sql>
+
+  Execution Results:
+  route
+  -----
+  tp
+
+  <answer>tp</answer>
+
+  ## Example 2: Patient Information Query
+
+  **Question:** What is patient 1114's gender?
+
+  <reasoning>
+  I need to find demographic information about a specific patient. The patient's gender would be stored in the patients table. I'll query this table, filtering by the subject_id which is the patient identifier in this database.
+  </reasoning>
+
+  <sql>
+  SELECT patients.gender
+  FROM patients
+  WHERE patients.subject_id = 1114
+  </sql>
+
+  Execution Results:
+  gender
+  ------
+  m
+
+  <answer>m</answer>
+
+  ## Example 3: Length of Stay Calculation
+
+  **Question:** Calculate the length of stay of the first stay of patient 27392 in the ICU.
+
+  <reasoning>
+  To calculate the length of stay in the ICU, I need to find the difference between the admission (intime) and discharge (outtime) dates. This information would be in the icustays table. I need to:
+  1. Filter for the specific patient (subject_id = 27392)
+  2. Ensure I'm looking at records where the patient was discharged (outtime is not null)
+  3. Order by admission time to get the first stay
+  4. Calculate the difference in days between intime and outtime using SQLite's date functions
+  </reasoning>
+
+  <sql>
+  SELECT strftime('%j', icustays.outtime) - strftime('%j', icustays.intime)
+  FROM icustays
+  WHERE icustays.hadm_id IN (
+      SELECT admissions.hadm_id
+      FROM admissions
+      WHERE admissions.subject_id = 27392
+  )
+  AND icustays.outtime IS NOT NULL
+  ORDER BY icustays.intime ASC
+  LIMIT 1
+  </sql>
+
+  Execution Results:
+  strftime('%j',icustays.outtime) - strftime('%j',icustays.intime)
+  -----------------------------------------------------------------
+  4
+
+  <answer>4</answer>
+
+  ## Example 4: Complex Statistical Query
+
+  **Question:** How many patients died after being diagnosed with DMII wo cmp nt st uncntr during the same hospital encounter since 6 years ago?
+
+  <reasoning>
+  This is a complex query that requires several steps:
+  1. Identify patients diagnosed with "DMII wo cmp nt st uncntr" (a diabetes mellitus diagnosis)
+  2. Filter for diagnoses within the last 6 years
+  3. Ensure the diagnosis and death occurred during the same hospital visit (same hadm_id)
+  4. Count unique patients who meet these criteria
+  5. I'll need to join multiple tables: diagnoses_icd, d_icd_diagnoses, admissions, and patients
+  </reasoning>
+
+  <sql>
+  SELECT COUNT(DISTINCT t2.subject_id)
+  FROM (
+      SELECT t1.subject_id, t1.charttime, t1.hadm_id
+      FROM (
+          SELECT admissions.subject_id, diagnoses_icd.charttime, admissions.hadm_id
+          FROM diagnoses_icd
+          JOIN admissions ON diagnoses_icd.hadm_id = admissions.hadm_id
+          WHERE diagnoses_icd.icd9_code = (
+              SELECT d_icd_diagnoses.icd9_code
+              FROM d_icd_diagnoses
+              WHERE d_icd_diagnoses.short_title = 'dmii wo cmp nt st uncntr'
+          )
+      ) AS t1
+      GROUP BY t1.subject_id
+      HAVING MIN(t1.charttime) = t1.charttime
+      AND DATETIME(t1.charttime) >= DATETIME(current_time, '-6 year')
+  ) AS t2
+  JOIN (
+      SELECT patients.subject_id, admissions.hadm_id, patients.dod
+      FROM admissions
+      JOIN patients ON patients.subject_id = admissions.subject_id
+      WHERE patients.dod IS NOT NULL
+      AND DATETIME(patients.dod) >= DATETIME(current_time, '-6 year')
+  ) AS t3 ON t2.subject_id = t3.subject_id
+  WHERE t2.hadm_id = t3.hadm_id
+  </sql>
+
+  Execution Results:
+  COUNT(DISTINCT t2.subject_id)
+  -----------------------------
+  51
+
+  <answer>51</answer>
