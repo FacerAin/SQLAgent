@@ -52,7 +52,8 @@ def judge(pred: str, ans: List[str]) -> bool:
     # Check each answer against the prediction
     for answer in ans:
         # Direct string match check
-        if answer in pred:
+        normalized_answer = normalize_string(answer)
+        if normalized_answer in normalized_pred:
             return True
 
         # Normalize the answer
