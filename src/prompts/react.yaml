@@ -59,7 +59,7 @@ few_shot_examples: |
 
   **Question:** What is patient 1114's gender?
 
-  Hint for reasoaning:
+  Hint for reasoning:
   I need to find demographic information about a specific patient. The patient's gender would be stored in the patients table. I'll query this table, filtering by the subject_id which is the patient identifier in this database.
 
   Hint for sql:
