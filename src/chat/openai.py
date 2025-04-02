@@ -11,7 +11,12 @@ class OpenAIClient(LLMClientInterface):
     """Client for OpenAI API"""
 
     def __init__(
-        self, model_id: str, api_key: Optional[str] = None, track_usage: bool = True
+        self,
+        model_id: str,
+        api_key: Optional[str] = None,
+        track_usage: bool = True,
+        log_to_file: bool = False,
+        log_dir: str = "logs",
     ):
         if not api_key:
             api_key = os.getenv("OPENAI_API_KEY")
@@ -26,7 +31,9 @@ class OpenAIClient(LLMClientInterface):
 
         # Initialize token usage logger if tracking is enabled
         if self.track_usage:
-            self.token_logger = init_token_logger()
+            self.token_logger = init_token_logger(
+                log_to_file=log_to_file, log_dir=log_dir
+            )
 
     def chat(
         self,

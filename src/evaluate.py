@@ -1,7 +1,7 @@
 import argparse
 import json
 import logging
-from typing import List
+from typing import Any, Dict, List
 
 from tqdm import tqdm
 
@@ -10,9 +10,6 @@ from src.chat.openai import OpenAIClient
 from src.database.connector import SqliteDatabaseConnector
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
-
-# Setup main application logger
-logger = init_logger(name="evaluate")
 
 
 def judge(pred: str, ans: List[str]) -> bool:
@@ -134,56 +131,89 @@ def parse_arguments():
         action="store_true",
         help="Use few-shot examples for the agent.",
     )
+    parser.add_argument(
+        "--log_to_file", action="store_true", help="Enable logging to file."
+    )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="Directory to store log files.",
+    )
 
     return parser.parse_args()
 
 
-def setup_resources(args):
-    """Set up and return necessary resources for evaluation."""
-    # Configure agent logger based on args
-    agent_logger = logging.getLogger("agent")
-    if args.agent_verbose:
-        agent_logger.setLevel(logging.INFO)
-    else:
-        agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
+class EvaluationContext:
+    """Context manager to handle logger setup and resources for evaluation."""
 
-    # Load dataset
-    datasets = load_dataset_from_jsonl(args.dataset_path)
-    if not datasets:
-        raise ValueError("The dataset is empty or not found.")
+    def __init__(self, args):
+        self.args = args
+        self.logger = None
+        self.db_connector = None
+        self.datasets = None
+        self.agent = None
 
-    # Select samples to evaluate
-    if args.num_samples >= 0:
-        sampled_datasets = datasets[: args.num_samples]
-    else:
-        sampled_datasets = datasets
+    def __enter__(self):
+        """Set up loggers and resources when entering the context."""
+        # Initialize main logger
+        self.logger = init_logger(
+            name="evaluate",
+            log_to_file=self.args.log_to_file,
+            log_dir=self.args.log_dir,
+        )
 
-    # Initialize database connector
-    db_connector = SqliteDatabaseConnector(args.database)
-    db_connector.connect()
+        # Configure agent logger
+        agent_logger = logging.getLogger("agent")
+        if self.args.agent_verbose:
+            agent_logger.setLevel(logging.INFO)
+        else:
+            agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
 
-    # Initialize model client
-    client = OpenAIClient(model_id=args.model_id)
+        # Load dataset
+        self.datasets = load_dataset_from_jsonl(self.args.dataset_path)
+        if not self.datasets:
+            raise ValueError("The dataset is empty or not found.")
 
-    # Initialize agent
-    agent = SQLReActAgent(
-        db_connector=db_connector,
-        model_id=args.model_id,
-        client=client,
-        prompt_file_path="src/prompts/react.yaml",
-        prompt_key="prompt",
-        max_iterations=args.max_iterations,
-        verbose=args.agent_verbose,  # Use the agent_verbose flag
-    )
+        # Select samples to evaluate
+        if self.args.num_samples >= 0:
+            self.datasets = self.datasets[: self.args.num_samples]
 
-    return sampled_datasets, db_connector, agent
+        # Initialize database connector
+        self.db_connector = SqliteDatabaseConnector(self.args.database)
+        self.db_connector.connect()
+
+        # Initialize model client
+        client = OpenAIClient(
+            model_id=self.args.model_id,
+            log_to_file=self.args.log_to_file,
+            log_dir=self.args.log_dir,
+        )
+
+        # Initialize agent
+        self.agent = SQLReActAgent(
+            db_connector=self.db_connector,
+            model_id=self.args.model_id,
+            client=client,
+            prompt_file_path="src/prompts/react.yaml",
+            prompt_key="prompt",
+            max_iterations=self.args.max_iterations,
+            verbose=self.args.agent_verbose,
+        )
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close resources when exiting the context."""
+        if self.db_connector:
+            self.db_connector.close()
 
 
-def process_samples(args, datasets, agent):
+def process_samples(context: EvaluationContext) -> List[Dict[str, Any]]:
     """Process each sample and return evaluation results."""
     evaluate_results = []
 
-    for sample in tqdm(datasets, desc="Evaluating samples", unit="sample"):
+    for sample in tqdm(context.datasets, desc="Evaluating samples", unit="sample"):
         question = sample.get("question")
         answer = sample.get("answer")
         gold_sql_query = sample.get("query")
@@ -194,11 +224,11 @@ def process_samples(args, datasets, agent):
             raise ValueError("Answer is missing in the dataset.")
 
         # Process the question
-        result = agent.process(question, use_few_shot=args.use_few_shot)
+        result = context.agent.process(question, use_few_shot=context.args.use_few_shot)
 
         # Log the results if verbose
-        if args.verbose:
-            log_sample_results(question, answer, result)
+        if context.args.verbose:
+            log_sample_results(context.logger, question, answer, result)
 
         # Store the evaluation results
         evaluate_results.append(
@@ -218,7 +248,12 @@ def process_samples(args, datasets, agent):
     return evaluate_results
 
 
-def log_sample_results(question, expected_answer, result):
+def log_sample_results(
+    logger: logging.Logger,
+    question: str,
+    expected_answer: List[str],
+    result: Dict[str, Any],
+):
     """Log results for a single sample."""
     logger.info(f"Question: {question}")
     logger.info(f"Expected Answer: {expected_answer}")
@@ -228,7 +263,7 @@ def log_sample_results(question, expected_answer, result):
     logger.info("--------------------------------------------------")
 
 
-def calculate_metrics(evaluate_results):
+def calculate_metrics(evaluate_results: List[Dict[str, Any]]) -> Dict[str, int]:
     """Calculate evaluation metrics."""
     evaluation_stats = {
         "total_num": 0,
@@ -249,7 +284,9 @@ def calculate_metrics(evaluate_results):
     return evaluation_stats
 
 
-def log_evaluation_results(args, stats):
+def log_evaluation_results(
+    logger: logging.Logger, args: argparse.Namespace, stats: Dict[str, int]
+):
     """Log evaluation results."""
     if args.verbose:
         logger.info("Evaluation Results:")
@@ -262,7 +299,12 @@ def log_evaluation_results(args, stats):
             logger.info(f"Accuracy: {accuracy:.2%}")
 
 
-def save_results(args, evaluate_results, evaluation_stats):
+def save_results(
+    logger: logging.Logger,
+    args: argparse.Namespace,
+    evaluate_results: List[Dict[str, Any]],
+    evaluation_stats: Dict[str, int],
+):
     """Save results to a file if requested."""
     if args.save_result:
         logger.info(f"Saving evaluation results to {args.output_path}")
@@ -279,25 +321,19 @@ def main():
     # Parse arguments
     args = parse_arguments()
 
-    # Setup resources
-    sampled_datasets, db_connector, agent = setup_resources(args)
-
-    try:
+    # Use context manager for evaluation
+    with EvaluationContext(args) as context:
         # Process all samples
-        evaluate_results = process_samples(args, sampled_datasets, agent)
+        evaluate_results = process_samples(context)
 
         # Calculate metrics
         evaluation_stats = calculate_metrics(evaluate_results)
 
         # Log results
-        log_evaluation_results(args, evaluation_stats)
+        log_evaluation_results(context.logger, args, evaluation_stats)
 
         # Save results
-        save_results(args, evaluate_results, evaluation_stats)
-
-    finally:
-        # Always close the database connection
-        db_connector.close()
+        save_results(context.logger, args, evaluate_results, evaluation_stats)
 
 
 if __name__ == "__main__":

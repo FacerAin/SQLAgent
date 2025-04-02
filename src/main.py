@@ -1,5 +1,6 @@
 import argparse
 import logging
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 
@@ -8,11 +9,66 @@ from src.chat.openai import OpenAIClient
 from src.database.connector import SqliteDatabaseConnector
 from src.utils.logger import init_logger
 
-logger = init_logger(name="main")
 load_dotenv()
 
 
-def main() -> None:
+class AgentContext:
+    """Context manager to handle logger setup and resources for the agent."""
+
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.logger = None
+        self.db_connector = None
+        self.client = None
+        self.agent = None
+
+    def __enter__(self):
+        """Set up loggers and resources when entering the context."""
+        # Initialize main logger
+        self.logger = init_logger(
+            name="main", log_to_file=self.args.log_to_file, log_dir=self.args.log_dir
+        )
+
+        # Configure agent logger based on args
+        agent_logger = logging.getLogger("agent")
+        if self.args.agent_verbose:
+            agent_logger.setLevel(logging.INFO)
+        else:
+            agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
+
+        # Initialize database connector
+        self.db_connector = SqliteDatabaseConnector(self.args.database)
+        self.db_connector.connect()
+
+        # Initialize model client
+        self.client = OpenAIClient(
+            model_id=self.args.model_id,
+            log_to_file=self.args.log_to_file,
+            log_dir=self.args.log_dir,
+        )
+
+        # Initialize agent
+        self.agent = SQLReActAgent(
+            db_connector=self.db_connector,
+            model_id=self.args.model_id,
+            client=self.client,
+            prompt_file_path="src/prompts/react.yaml",
+            prompt_key="prompt",
+            max_iterations=self.args.max_iterations,
+            verbose=self.args.agent_verbose,
+        )
+
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Close resources when exiting the context."""
+        if self.db_connector:
+            self.db_connector.close()
+            self.logger.debug("Database connection closed")
+
+
+def parse_arguments():
+    """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Process SQL query using SQLReActAgent."
     )
@@ -46,41 +102,47 @@ def main() -> None:
     parser.add_argument(
         "--agent_verbose", action="store_true", help="Enable verbose agent logging."
     )
-    args = parser.parse_args()
-
-    # Configure agent logger based on args
-    agent_logger = logging.getLogger("agent")
-    if args.agent_verbose:
-        agent_logger.setLevel(logging.INFO)
-    else:
-        agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
-
-    db_connector = SqliteDatabaseConnector(args.database)
-    db_connector.connect()
-    client = OpenAIClient(model_id=args.model_id)
-
-    agent = SQLReActAgent(
-        db_connector=db_connector,
-        model_id=args.model_id,
-        client=client,
-        prompt_file_path="src/prompts/react.yaml",
-        prompt_key="prompt",
-        max_iterations=args.max_iterations,
-        verbose=args.agent_verbose,
+    parser.add_argument(
+        "--log_to_file", action="store_true", help="Enable logging to file."
     )
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs",
+        help="Directory to store log files.",
+    )
+    return parser.parse_args()
 
-    result = agent.process(args.query)
 
+def process_query(context: AgentContext) -> Dict[str, Any]:
+    """Process the query and return the result."""
+    return context.agent.process(context.args.query)
+
+
+def log_results(context: AgentContext, result: Dict[str, Any]) -> None:
+    """Log the results of the query processing."""
     # Always show these results, regardless of verbose setting
-    logger.info(f"Answer: {result['answer']}")
-    logger.info(f"SQL Query: {result['query']}")
-    logger.info(f"Total Turns: {result['turns']}")
+    context.logger.info(f"Answer: {result['answer']}")
+    context.logger.info(f"SQL Query: {result['query']}")
+    context.logger.info(f"Total Turns: {result['turns']}")
 
     # Show detailed results only if verbose is enabled
-    if args.verbose:
-        logger.info(f"History: {result['history']}")
+    if context.args.verbose:
+        context.logger.info(f"History: {result['history']}")
 
-    db_connector.close()  # TODO: Refactor to use context manager
+
+def main() -> None:
+    """Main function to coordinate the query processing."""
+    # Parse arguments
+    args = parse_arguments()
+
+    # Use context manager for the agent
+    with AgentContext(args) as context:
+        # Process the query
+        result = process_query(context)
+
+        # Log the results
+        log_results(context, result)
 
 
 if __name__ == "__main__":
