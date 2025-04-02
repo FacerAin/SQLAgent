@@ -13,22 +13,22 @@ from src.utils.logger import init_logger
 logger = init_logger()
 
 
-def judge(pred: List[str], ans: str) -> bool:
+def judge(pred: str, ans: List[str]) -> bool:
     """
-    Judge if the prediction list contains a match for the answer string.
+    Judge if the prediction string matches any of the answers in the list.
 
     Args:
-        pred (List[str]): The prediction as a list of strings
-        ans (str): The answer string to match against
+        pred (str): The prediction string
+        ans (List[str]): The list of possible correct answers
 
     Returns:
-        bool: True if any prediction matches the answer, False otherwise
+        bool: True if prediction matches any answer, False otherwise
     """
-    # Early return if the prediction list is empty
-    if not pred:
+    # Early return if the answer list is empty
+    if not ans:
         return False
 
-    # Define our normalization functions to keep code DRY
+    # Define normalization function
     def normalize_string(s: str) -> str:
         return s.replace("True", "1").replace("False", "0")
 
@@ -46,30 +46,31 @@ def judge(pred: List[str], ans: str) -> bool:
         "none": "0",
     }
 
-    # Normalize the answer
-    normalized_ans = ans
-    if ans in boolean_mapping:
-        normalized_ans = boolean_mapping[ans]
+    # Normalize the prediction
+    normalized_pred = normalize_string(pred)
 
-    # Handle decimal numbers in answer
-    if normalized_ans.endswith(".0"):
-        normalized_ans = normalized_ans[:-2]
-
-    # Handle multiple comma-separated answers
-    answer_items = [normalized_ans]
-    if ", " in normalized_ans:
-        answer_items = normalized_ans.split(", ")
-
-    # Check each prediction against all answer items
-    for p in pred:
-        normalized_p = normalize_string(p)
-
+    # Check each answer against the prediction
+    for answer in ans:
         # Direct string match check
-        if ans in p:
+        if answer in pred:
             return True
 
+        # Normalize the answer
+        normalized_ans = answer
+        if answer in boolean_mapping:
+            normalized_ans = boolean_mapping[answer]
+
+        # Handle decimal numbers in answer
+        if normalized_ans.endswith(".0"):
+            normalized_ans = normalized_ans[:-2]
+
+        # Handle multiple comma-separated items within a single answer
+        ans_items = [normalized_ans]
+        if ", " in normalized_ans:
+            ans_items = normalized_ans.split(", ")
+
         # Check with normalized values
-        if any(item in normalized_p for item in answer_items):
+        if any(item in normalized_pred for item in ans_items):
             return True
 
     return False
@@ -225,7 +226,7 @@ def calculate_metrics(evaluate_results):
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
         evaluation_stats["total_num"] += 1
-        if judge(sample["expected_answer"], sample["generated_answer"]):
+        if judge(pred=sample["generated_answer"], ans=sample["expected_answer"]):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1
