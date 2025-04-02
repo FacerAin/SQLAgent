@@ -12,7 +12,7 @@ typecheck:
 	mypy .
 
 test:
-	pytest --tb=short --disable-warnings -p no:warnings
+	pytest .
 
 all: format lint typecheck
 
