@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 from tqdm import tqdm
 
 from src.agent.react import SQLReActAgent
-from src.chat.openai import OpenAIClient
+from src.chat.factory import ChatModelFactory
 from src.database.connector import SqliteDatabaseConnector
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
@@ -195,11 +195,7 @@ class EvaluationContext:
         self.db_connector.connect()
 
         # Initialize model client
-        client = OpenAIClient(
-            model_id=self.args.model_id,
-            log_to_file=self.args.log_to_file,
-            log_dir=self.args.log_dir,
-        )
+        client = ChatModelFactory.load_model(model_id=self.args.model_id)
 
         # Initialize agent
         self.agent = SQLReActAgent(

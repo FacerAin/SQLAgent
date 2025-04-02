@@ -5,7 +5,7 @@ from typing import Any, Dict
 from dotenv import load_dotenv
 
 from src.agent.react import SQLReActAgent
-from src.chat.openai import OpenAIClient
+from src.chat.factory import ChatModelFactory
 from src.database.connector import SqliteDatabaseConnector
 from src.utils.logger import init_logger
 
@@ -41,10 +41,8 @@ class AgentContext:
         self.db_connector.connect()
 
         # Initialize model client
-        self.client = OpenAIClient(
+        self.client = ChatModelFactory.load_model(
             model_id=self.args.model_id,
-            log_to_file=self.args.log_to_file,
-            log_dir=self.args.log_dir,
         )
 
         # Initialize agent
