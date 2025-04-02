@@ -9,72 +9,9 @@ from tqdm import tqdm
 from src.agent.react import SQLReActAgent
 from src.chat.factory import ChatModelFactory
 from src.database.connector import SqliteDatabaseConnector
+from src.evaluation.judge import exact_match
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
-
-
-def judge(pred: str, ans: List[str]) -> bool:
-    """
-    Judge if the prediction string matches any of the answers in the list.
-
-    Args:
-        pred (str): The prediction string
-        ans (List[str]): The list of possible correct answers
-
-    Returns:
-        bool: True if prediction matches any answer, False otherwise
-    """
-    # Early return if the answer list is empty
-    if not ans:
-        return False
-
-    # Define normalization function
-    def normalize_string(s: str) -> str:
-        return s.replace("True", "1").replace("False", "0")
-
-    # Boolean mapping for normalization
-    boolean_mapping = {
-        "False": "0",
-        "false": "0",
-        "True": "1",
-        "true": "1",
-        "No": "0",
-        "no": "0",
-        "Yes": "1",
-        "yes": "1",
-        "None": "0",
-        "none": "0",
-    }
-
-    # Normalize the prediction
-    normalized_pred = normalize_string(pred)
-
-    # Check each answer against the prediction
-    for answer in ans:
-        # Direct string match check
-        normalized_answer = normalize_string(answer)
-        if normalized_answer in normalized_pred:
-            return True
-
-        # Normalize the answer
-        normalized_ans = answer
-        if answer in boolean_mapping:
-            normalized_ans = boolean_mapping[answer]
-
-        # Handle decimal numbers in answer
-        if normalized_ans.endswith(".0"):
-            normalized_ans = normalized_ans[:-2]
-
-        # Handle multiple comma-separated items within a single answer
-        ans_items = [normalized_ans]
-        if ", " in normalized_ans:
-            ans_items = normalized_ans.split(", ")
-
-        # Check with normalized values
-        if any(item in normalized_pred for item in ans_items):
-            return True
-
-    return False
 
 
 def parse_arguments():
@@ -281,7 +218,7 @@ def calculate_metrics(evaluate_results: List[Dict[str, Any]]) -> Dict[str, int]:
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
         evaluation_stats["total_num"] += 1
-        if judge(pred=sample["generated_answer"], ans=sample["expected_answer"]):
+        if exact_match(pred=sample["generated_answer"], ans=sample["expected_answer"]):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1
