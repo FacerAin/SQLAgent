@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 from typing import Any, Dict, List
 
 from tqdm import tqdm
@@ -112,7 +113,8 @@ def parse_arguments():
     parser.add_argument(
         "--output_path",
         type=str,
-        default="data/evaluate_results.json",
+        default="results/{model_id}_{num_samples}.json",
+        help="Path to save evaluation results. Supports formatting with {model_id} and {num_samples}.",
     )
     parser.add_argument(
         "--save_result",
@@ -125,7 +127,6 @@ def parse_arguments():
         default=5,
         help="Maximum number of reasoning iterations for the agent",
     )
-
     parser.add_argument(
         "--use_few_shot",
         action="store_true",
@@ -139,6 +140,16 @@ def parse_arguments():
         type=str,
         default="logs",
         help="Directory to store log files.",
+    )
+    parser.add_argument(
+        "--skip_metrics",
+        action="store_true",
+        help="Skip calculation of metrics, only generate raw results.",
+    )
+    parser.add_argument(
+        "--results_path",
+        type=str,
+        help="Path to existing evaluation results to calculate metrics from.",
     )
 
     return parser.parse_args()
@@ -303,17 +314,51 @@ def save_results(
     logger: logging.Logger,
     args: argparse.Namespace,
     evaluate_results: List[Dict[str, Any]],
-    evaluation_stats: Dict[str, int],
+    evaluation_stats: Dict[str, int] = None,
 ):
     """Save results to a file if requested."""
     if args.save_result:
-        logger.info(f"Saving evaluation results to {args.output_path}")
+        # Format the output path to include model and sample count
+        output_path = args.output_path
+        if "{model_id}" in output_path:
+            output_path = output_path.replace("{model_id}", args.model_id)
+        if "{num_samples}" in output_path:
+            output_path = output_path.replace("{num_samples}", str(args.num_samples))
+
+        output_dir = os.path.dirname(output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            logger.info(f"Created directory: {output_dir}")
+
+        logger.info(f"Saving evaluation results to {output_path}")
+
         final_results = {
             "evaluation_history": evaluate_results,
-            "metric": evaluation_stats,
         }
-        with open(args.output_path, "w") as f:
+
+        # Add metrics if they were calculated
+        if evaluation_stats:
+            final_results["metric"] = evaluation_stats
+
+        with open(output_path, "w") as f:
             json.dump(final_results, f, indent=4)
+            logger.info(f"Results saved to {output_path}")
+
+
+def load_evaluate_results(results_path: str) -> List[Dict[str, Any]]:
+    """Load previously saved evaluation results."""
+    if not os.path.exists(results_path):
+        raise FileNotFoundError(f"Results file not found: {results_path}")
+
+    with open(results_path, "r") as f:
+        data = json.load(f)
+
+    if "evaluation_history" not in data:
+        raise ValueError(
+            "Invalid results file format: 'evaluation_history' key missing"
+        )
+
+    return data["evaluation_history"]
 
 
 def main():
@@ -321,19 +366,43 @@ def main():
     # Parse arguments
     args = parse_arguments()
 
-    # Use context manager for evaluation
-    with EvaluationContext(args) as context:
-        # Process all samples
-        evaluate_results = process_samples(context)
+    # Initialize the logger outside the context for use with loaded results
+    logger = init_logger(
+        name="evaluate",
+        log_to_file=args.log_to_file,
+        log_dir=args.log_dir,
+    )
 
-        # Calculate metrics
+    evaluate_results = None
+
+    # Check if we're loading existing results or generating new ones
+    if args.results_path:
+        # Load existing results
+        logger.info(f"Loading evaluation results from {args.results_path}")
+        evaluate_results = load_evaluate_results(args.results_path)
+        logger.info(f"Loaded {len(evaluate_results)} evaluation results")
+    else:
+        # Generate new results using the context manager
+        with EvaluationContext(args) as context:
+            # Process all samples
+            evaluate_results = process_samples(context)
+
+            # Save raw results if requested and skipping metrics
+            if args.skip_metrics and args.save_result:
+                save_results(context.logger, args, evaluate_results)
+                logger.info("Skipping metrics calculation as requested")
+
+    # Calculate metrics if not skipped
+    if not args.skip_metrics and evaluate_results:
+        logger.info("Calculating evaluation metrics")
         evaluation_stats = calculate_metrics(evaluate_results)
 
         # Log results
-        log_evaluation_results(context.logger, args, evaluation_stats)
+        log_evaluation_results(logger, args, evaluation_stats)
 
-        # Save results
-        save_results(context.logger, args, evaluate_results, evaluation_stats)
+        # Save complete results with metrics if requested and not already saved
+        if args.save_result and not (args.results_path is None and args.skip_metrics):
+            save_results(logger, args, evaluate_results, evaluation_stats)
 
 
 if __name__ == "__main__":
