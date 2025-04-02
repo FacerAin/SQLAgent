@@ -6,8 +6,6 @@ from src.chat.base import LLMClientInterface
 from src.utils.load import load_prompt_from_yaml
 from src.utils.logger import init_logger
 
-logger = init_logger(name="agent")
-
 
 class BaseAgent(ABC):
     """
@@ -22,6 +20,8 @@ class BaseAgent(ABC):
         prompt_key: str = "prompt",
         max_iterations: int = 3,
         verbose: bool = False,
+        log_to_file: bool = False,
+        log_dir: str = "logs",
     ):
         self.model_id = model_id
         self.prompt_file_path = prompt_file_path
@@ -30,6 +30,11 @@ class BaseAgent(ABC):
         self.verbose = verbose
         self.prompt = load_prompt_from_yaml(prompt_file_path, prompt_key)
         self.client = client
+        self.log_to_file = log_to_file
+        self.log_dir = log_dir
+        self.logger = init_logger(
+            name="agent", log_dir=log_dir, log_to_file=log_to_file
+        )
 
     def extract_section(self, text: str, section: str) -> str:
         """Extract content within XML-style tags"""
@@ -40,7 +45,7 @@ class BaseAgent(ABC):
     def _log_debug_info(self, content: str, label: str) -> None:
         """Log debug information if verbose mode is enabled"""
         if self.verbose and content:
-            logger.info(f"{label}: {content}")
+            self.logger.info(f"{label}: {content}")
 
     @abstractmethod
     def process(self, question: str) -> Dict[str, Any]:
