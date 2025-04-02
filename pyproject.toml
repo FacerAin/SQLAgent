@@ -19,6 +19,7 @@ pandas-stubs = "^2.2.3.250308"
 openai = "^1.70.0"
 colorlog = "^6.9.0"
 sqlparse = "^0.5.3"
+sqlglot = "^26.12.1"
 
 
 [tool.poetry.group.dev.dependencies]
