@@ -6,7 +6,7 @@ from src.chat.base import LLMClientInterface
 from src.utils.load import load_prompt_from_yaml
 from src.utils.logger import init_logger
 
-logger = init_logger()
+logger = init_logger(name="agent")
 
 
 class BaseAgent(ABC):
