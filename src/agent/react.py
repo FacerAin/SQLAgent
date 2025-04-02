@@ -9,7 +9,7 @@ from src.database.connector import BaseDatabaseConnector
 from src.utils.load import load_prompt_from_yaml
 from src.utils.logger import init_logger
 
-logger = init_logger()
+logger = init_logger(name="agent")
 
 
 class SQLReActAgent(BaseAgent):

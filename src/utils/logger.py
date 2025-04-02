@@ -4,14 +4,15 @@ import sys
 import colorlog
 
 
-def init_logger(log_level: int = logging.INFO) -> logging.Logger:
+def init_logger(log_level: int = logging.INFO, name: str = None) -> logging.Logger:
     """
     Initialize and configure the logger with custom color support for different parts.
 
     Args:
         log_level (int): The logging level (e.g., logging.DEBUG, logging.INFO).
+        name (str, optional): The name for the logger. If None, root logger is used.
     """
-    logger = logging.getLogger()
+    logger = logging.getLogger(name)
     logger.setLevel(log_level)
 
     # Clear existing handlers if any

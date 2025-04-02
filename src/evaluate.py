@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 from typing import List
 
 from tqdm import tqdm
@@ -10,7 +11,8 @@ from src.database.connector import SqliteDatabaseConnector
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
 
-logger = init_logger()
+# Setup main application logger
+logger = init_logger(name="evaluate")
 
 
 def judge(pred: str, ans: List[str]) -> bool:
@@ -105,7 +107,10 @@ def parse_arguments():
         help="Number of samples to evaluate. If -1, evaluate all samples.",
     )
     parser.add_argument(
-        "--verbose", action="store_true", help="Enable verbose logging."
+        "--verbose", action="store_true", help="Enable verbose evaluation logging."
+    )
+    parser.add_argument(
+        "--agent_verbose", action="store_true", help="Enable verbose agent logging."
     )
     parser.add_argument(
         "--output_path",
@@ -135,6 +140,13 @@ def parse_arguments():
 
 def setup_resources(args):
     """Set up and return necessary resources for evaluation."""
+    # Configure agent logger based on args
+    agent_logger = logging.getLogger("agent")
+    if args.agent_verbose:
+        agent_logger.setLevel(logging.INFO)
+    else:
+        agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
+
     # Load dataset
     datasets = load_dataset_from_jsonl(args.dataset_path)
     if not datasets:
@@ -161,7 +173,7 @@ def setup_resources(args):
         prompt_file_path="src/prompts/react.yaml",
         prompt_key="prompt",
         max_iterations=args.max_iterations,
-        verbose=True,
+        verbose=args.agent_verbose,  # Use the agent_verbose flag
     )
 
     return sampled_datasets, db_connector, agent
