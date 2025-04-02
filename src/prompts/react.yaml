@@ -44,7 +44,7 @@ few_shot_examples: |
 
   **Question:** What is lidocaine 5% ointment's way of ingesting it?
 
-  Hint for reasoaning:
+  Hint for reasoning:
   I need to find out how lidocaine 5% ointment is administered to patients. This information would be stored in the prescriptions table, which likely has a 'route' column that indicates the method of administration. I'll query the prescriptions table for records where the drug name is exactly 'lidocaine 5% ointment' and retrieve the distinct routes.
 
   Hint for sql:
