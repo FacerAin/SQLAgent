@@ -120,8 +120,8 @@ class SQLReActAgent(BaseAgent):
         if isinstance(query_result, pd.DataFrame):
             if not query_result.empty:
                 result_str = query_result.head(10).to_string()
-                if len(query_result) > 10:
-                    result_str += f"\n... and {len(query_result) - 10} more rows"
+                if len(query_result) > 100:
+                    result_str += f"\n... and {len(query_result) - 100} more rows"
             else:
                 result_str = "No results"
         else:
@@ -180,7 +180,7 @@ class SQLReActAgent(BaseAgent):
     def _get_next_instruction(self, success: bool) -> str:
         """Get next instruction based on query execution success"""
         if success:
-            return "If you need additional analysis or another query, explain using the <reasoning> tag. If you're ready to provide a final answer, use the <answer> tag."
+            return "If you need additional reasoning or another query, explain using the <reasoning> tag. If you're completely certain and ready to provide a final answer, use the <answer> tag. Only use the <answer> tag when you are absolutely confident in your response."
         else:
             return "Please fix the error and try again. Write your query inside the <sql> tag."
 

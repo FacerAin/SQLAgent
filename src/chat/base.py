@@ -13,7 +13,6 @@ class LLMClientInterface:
         user_prompt: str,
         system_prompt: Optional[str] = None,
         temperature: float = 0.0,
-        max_tokens: Optional[int] = None,
     ) -> str:
         """Generate a response from the LLM based on the provided prompts.
 
@@ -21,7 +20,6 @@ class LLMClientInterface:
             user_prompt: The main prompt from the user
             system_prompt: Optional system instructions
             temperature: Controls randomness (0 = deterministic)
-            max_tokens: Maximum length of response
 
         Returns:
             The LLM's response as a string
