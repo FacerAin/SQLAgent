@@ -1,11 +1,12 @@
 import re
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import pandas as pd
 
 from src.agent.base import BaseAgent
 from src.chat.base import LLMClientInterface
 from src.database.connector import BaseDatabaseConnector
+from src.utils.load import load_prompt_from_yaml
 from src.utils.logger import init_logger
 
 logger = init_logger()
@@ -36,6 +37,9 @@ class SQLReActAgent(BaseAgent):
             verbose=verbose,
         )
         self.db_connector = db_connector
+        self.few_shot_examples = load_prompt_from_yaml(
+            prompt_file_path, "few_shot_examples"
+        )
 
     def get_db_schema(self) -> str:
         """Retrieve and format database schema information"""
@@ -129,15 +133,21 @@ class SQLReActAgent(BaseAgent):
 
         return True, query_result, result_str
 
-    def _build_initial_context(self, question: str, db_schema: str) -> str:
+    def _build_initial_context(
+        self, question: str, db_schema: str, few_shot_examples: Optional[str] = None
+    ) -> str:
         """Build the initial prompt context with question and schema"""
-        return f"""Question: {question}
+        context = f"""Question: {question}
 
         Database Schema:
         {db_schema}
 
         Start the ReAct process to answer this question. Begin with a <reasoning> tag to explain your approach, then use the <sql> tag to write the necessary SQL query.
         """
+
+        if few_shot_examples:
+            context += f"\n\n{self.few_shot_examples}"
+        return context
 
     def _create_query_history_entry(
         self, turn: int, query: str, success: bool, result_info: str
@@ -174,10 +184,11 @@ class SQLReActAgent(BaseAgent):
         else:
             return "Please fix the error and try again. Write your query inside the <sql> tag."
 
-    def process(self, question: str) -> Dict[str, Any]:
+    def process(self, question: str, use_few_shot: bool = False) -> Dict[str, Any]:
         """Process a question to generate SQL queries and answers"""
         db_schema = self.get_db_schema()
-        context = self._build_initial_context(question, db_schema)
+        few_shot_examples = self.few_shot_examples if use_few_shot else None
+        context = self._build_initial_context(question, db_schema, few_shot_examples)
 
         if self.verbose:
             logger.info("Initial Context:")
