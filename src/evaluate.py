@@ -1,5 +1,6 @@
 import argparse
 import json
+from typing import List
 
 from tqdm import tqdm
 
@@ -12,28 +13,26 @@ from src.utils.logger import init_logger
 logger = init_logger()
 
 
-def judge(pred: str, ans: str) -> bool:
+def judge(pred: List[str], ans: str) -> bool:
     """
-    Judge if the prediction matches the answer.
+    Judge if the prediction list contains a match for the answer string.
 
     Args:
-        pred (str): The prediction string
-        ans (str): The answer string
+        pred (List[str]): The prediction as a list of strings
+        ans (str): The answer string to match against
 
     Returns:
-        bool: True if prediction matches answer, False otherwise
+        bool: True if any prediction matches the answer, False otherwise
     """
-    # First check if answer is directly contained in prediction
-    if ans in pred:
-        return True
+    # Early return if the prediction list is empty
+    if not pred:
+        return False
 
-    # Normalize prediction
-    normalized_pred = pred.replace("True", "1").replace("False", "0")
+    # Define our normalization functions to keep code DRY
+    def normalize_string(s: str) -> str:
+        return s.replace("True", "1").replace("False", "0")
 
-    # Normalize answer
-    normalized_ans = ans
-
-    # Map common boolean and yes/no values to normalized form
+    # Boolean mapping for normalization
     boolean_mapping = {
         "False": "0",
         "false": "0",
@@ -47,20 +46,33 @@ def judge(pred: str, ans: str) -> bool:
         "none": "0",
     }
 
+    # Normalize the answer
+    normalized_ans = ans
     if ans in boolean_mapping:
         normalized_ans = boolean_mapping[ans]
 
-    # Handle decimal numbers
+    # Handle decimal numbers in answer
     if normalized_ans.endswith(".0"):
         normalized_ans = normalized_ans[:-2]
 
-    # Handle multiple answers
+    # Handle multiple comma-separated answers
     answer_items = [normalized_ans]
     if ", " in normalized_ans:
         answer_items = normalized_ans.split(", ")
 
-    # Check if any normalized answer is in the normalized prediction
-    return any(item in normalized_pred for item in answer_items)
+    # Check each prediction against all answer items
+    for p in pred:
+        normalized_p = normalize_string(p)
+
+        # Direct string match check
+        if ans in p:
+            return True
+
+        # Check with normalized values
+        if any(item in normalized_p for item in answer_items):
+            return True
+
+    return False
 
 
 def parse_arguments():
@@ -108,6 +120,12 @@ def parse_arguments():
         type=int,
         default=5,
         help="Maximum number of reasoning iterations for the agent",
+    )
+
+    parser.add_argument(
+        "--use_few_shot",
+        action="store_true",
+        help="Use few-shot examples for the agent.",
     )
 
     return parser.parse_args()
@@ -162,7 +180,7 @@ def process_samples(args, datasets, agent):
             raise ValueError("Answer is missing in the dataset.")
 
         # Process the question
-        result = agent.process(question)
+        result = agent.process(question, use_few_shot=args.use_few_shot)
 
         # Log the results if verbose
         if args.verbose:
@@ -207,7 +225,7 @@ def calculate_metrics(evaluate_results):
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
         evaluation_stats["total_num"] += 1
-        if sample["generated_answer"] == sample["expected_answer"]:
+        if judge(sample["expected_answer"], sample["generated_answer"]):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1
