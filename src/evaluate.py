@@ -9,7 +9,7 @@ from tqdm import tqdm
 from src.agent.react import SQLReActAgent
 from src.chat.factory import ChatModelFactory
 from src.database.connector import SqliteDatabaseConnector
-from src.evaluation.judge import exact_match
+from src.evaluation.judge import exact_match, verify_sql_query_equivalent
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
 
@@ -207,13 +207,16 @@ def log_sample_results(
     logger.info("--------------------------------------------------")
 
 
-def calculate_metrics(evaluate_results: List[Dict[str, Any]]) -> Dict[str, int]:
+def calculate_metrics(
+    evaluate_results: List[Dict[str, Any]], context: EvaluationContext
+) -> Dict[str, int]:
     """Calculate evaluation metrics."""
     evaluation_stats = {
         "total_num": 0,
         "correct": 0,
         "unfinished": 0,
         "incorrect": 0,
+        "sql_equality": 0,
     }
 
     for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
@@ -225,6 +228,14 @@ def calculate_metrics(evaluate_results: List[Dict[str, Any]]) -> Dict[str, int]:
         else:
             evaluation_stats["incorrect"] += 1
 
+        # Check SQL equality
+        if verify_sql_query_equivalent(
+            pred_sql_query=sample["sql_query"],
+            gold_sql_query=sample["gold_sql_query"],
+            db_connector=context.db_connector,
+        ):
+            evaluation_stats["sql_equality"] += 1
+
     return evaluation_stats
 
 
@@ -234,10 +245,8 @@ def log_evaluation_results(
     """Log evaluation results."""
     if args.verbose:
         logger.info("Evaluation Results:")
-        logger.info(f"Total Samples: {stats['total_num']}")
-        logger.info(f"Correct Answers: {stats['correct']}")
-        logger.info(f"Incorrect Answers: {stats['incorrect']}")
-        logger.info(f"Unfinished Answers: {stats['unfinished']}")
+        for key, value in stats.items():
+            logger.info(f"{key}: {value}")
         if stats["total_num"] > 0:
             accuracy = stats["correct"] / stats["total_num"]
             logger.info(f"Accuracy: {accuracy:.2%}")
@@ -325,17 +334,19 @@ def main():
                 save_results(context.logger, args, evaluate_results)
                 logger.info("Skipping metrics calculation as requested")
 
-    # Calculate metrics if not skipped
-    if not args.skip_metrics and evaluate_results:
-        logger.info("Calculating evaluation metrics")
-        evaluation_stats = calculate_metrics(evaluate_results)
+            # Calculate metrics if not skipped
+            if not args.skip_metrics and evaluate_results:
+                logger.info("Calculating evaluation metrics")
+                evaluation_stats = calculate_metrics(evaluate_results, context)
 
-        # Log results
-        log_evaluation_results(logger, args, evaluation_stats)
+                # Log results
+                log_evaluation_results(logger, args, evaluation_stats)
 
-        # Save complete results with metrics if requested and not already saved
-        if args.save_result and not (args.results_path is None and args.skip_metrics):
-            save_results(logger, args, evaluate_results, evaluation_stats)
+                # Save complete results with metrics if requested and not already saved
+                if args.save_result and not (
+                    args.results_path is None and args.skip_metrics
+                ):
+                    save_results(logger, args, evaluate_results, evaluation_stats)
 
 
 if __name__ == "__main__":
