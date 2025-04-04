@@ -23,6 +23,7 @@ python -m src.evaluate \
   --log_to_file \
   --use_few_shot \
   --verbose \
+  --agent_verbose \
   "$@"
 
 echo "Evaluation completed."

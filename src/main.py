@@ -22,7 +22,7 @@ class AgentContext:
         self.client = None
         self.agent = None
 
-    def __enter__(self):
+    def __enter__(self) -> "AgentContext":
         """Set up loggers and resources when entering the context."""
         # Initialize main logger
         self.logger = init_logger(
@@ -58,14 +58,14 @@ class AgentContext:
 
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Close resources when exiting the context."""
         if self.db_connector:
             self.db_connector.close()
             self.logger.debug("Database connection closed")
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     """Parse and return command-line arguments."""
     parser = argparse.ArgumentParser(
         description="Process SQL query using SQLReActAgent."
