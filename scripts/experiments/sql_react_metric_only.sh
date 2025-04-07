@@ -12,7 +12,7 @@ OUTPUT_PATH="results/{agent_type}_{model_id}_{dataset_name}.json"
 AGENT_TYPE="sql_react"
 PROMPT_PATH="src/prompts/react.yaml"
 
-MODEL_IDS=("o3-mini")
+MODEL_IDS=("gpt-4o-mini")
 
 for MODEL_ID in "${MODEL_IDS[@]}"; do
   # Run the evaluation script
@@ -25,7 +25,7 @@ for MODEL_ID in "${MODEL_IDS[@]}"; do
     --output_path $OUTPUT_PATH \
     --agent_type $AGENT_TYPE \
     --prompt_path $PROMPT_PATH \
-    --results_path "results/sql_react_o3-mini_test_50.json" \
+    --results_path "results/sql_react_gpt-4o-mini_test_50.json" \
     --save_result \
     --log_to_file \
     --use_few_shot \
