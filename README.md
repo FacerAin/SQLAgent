@@ -30,6 +30,10 @@ cd SQL-R1
 
 # Install dependencies using Poetry
 poetry install
+
+# Set up environment variables
+cp .env.sample .env
+# Add your OpenAI API key to the .env file
 ```
 
 ## Requirements
@@ -155,6 +159,26 @@ This project uses Poetry for dependency management and includes configurations f
 - mypy (type checking)
 - flake8 (linting)
 - pre-commit hooks
+
+You can use the Makefile for common development tasks:
+```bash
+# Format code with black and isort
+make format
+
+# Run linting with flake8
+make lint
+
+# Run type checking with mypy
+make typecheck
+
+# Run all checks
+make all
+
+# Clean up cache files
+make clean
+```
+
+Pre-commit hooks will automatically run linting and type checking before commits.
 
 ## Future Plans
 
