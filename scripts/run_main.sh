@@ -7,6 +7,7 @@
 MODEL_ID="gpt-4o-mini"
 DATABASE="data/mimic_iii/mimic_iii.db"
 MAX_ITERATIONS=5
+QUESTION="how many times in the last year has nonexcis debridement wnd been ordered?"
 
 # Run the main script
 python -m src.main \

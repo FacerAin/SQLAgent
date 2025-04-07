@@ -1,9 +1,10 @@
 import os
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import Client
 
-from src.chat.base import LLMClientInterface
+from src.chat.base import ChatMessage, LLMClientInterface
+from src.tool.base import BaseTool
 from src.utils.logger import init_token_logger
 
 
@@ -37,18 +38,21 @@ class OpenAIClient(LLMClientInterface):
 
     def chat(
         self,
-        user_prompt: str,
-        system_prompt: Optional[str] = None,
-        temperature: float = 0.0,
-    ) -> str:
-        response = self.client.chat.completions.create(
+        messages: List[Dict[str, str]],
+        stop_sequences: Optional[List[str]] = None,
+        grammar: Optional[str] = None,
+        tools_to_call_from: Optional[List[BaseTool]] = None,
+        **kwargs: Any,
+    ) -> ChatMessage:
+        completion_kwargs = self._prepare_completion_kwargs(
+            messages=messages,
+            stop_sequences=stop_sequences,
+            grammar=grammar,
+            tools_to_call_from=tools_to_call_from,
             model=self.model_id,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=temperature,
+            **kwargs,
         )
+        response = self.client.chat.completions.create(**completion_kwargs)
 
         if self.track_usage:
             # Extract token usage information
@@ -67,7 +71,14 @@ class OpenAIClient(LLMClientInterface):
                 f"Completion: {completion_tokens}, Total: {total_tokens}"
             )
 
-        return str(response.choices[0].message.content.strip())
+        response_message = ChatMessage.from_dict(
+            response.choices[0].message.model_dump(
+                include={"role", "content", "tool_calls"}
+            )
+        )
+        return self.post_process_message(
+            message=response_message, tools_to_call_from=tools_to_call_from
+        )
 
     def get_token_usage(self) -> Dict[str, int]:
         """Get the cumulative token usage statistics.
@@ -108,17 +119,24 @@ class OpenAIReasoningClient(LLMClientInterface):
 
     def chat(
         self,
-        user_prompt: str,
-        system_prompt: Optional[str] = None,
-        temperature: float = 0.0,  # Not used in reasoning models
-    ) -> str:
-        response = self.client.chat.completions.create(
+        messages: List[Dict[str, str]],
+        stop_sequences: Optional[List[str]] = None,
+        grammar: Optional[str] = None,
+        tools_to_call_from: Optional[List[BaseTool]] = None,
+        **kwargs: Any,
+    ) -> ChatMessage:
+        completion_kwargs = self._prepare_completion_kwargs(
+            messages=messages,
+            stop_sequences=stop_sequences,
+            grammar=grammar,
+            tools_to_call_from=tools_to_call_from,
             model=self.model_id,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
+            **kwargs,
         )
+        completion_kwargs.pop(
+            "temperature", None
+        )  # OpenAI's Reasoning model doesn't support temperature.
+        response = self.client.chat.completions.create(**completion_kwargs)
 
         if self.track_usage:
             # Extract token usage information
@@ -137,7 +155,14 @@ class OpenAIReasoningClient(LLMClientInterface):
                 f"Completion: {completion_tokens}, Total: {total_tokens}"
             )
 
-        return str(response.choices[0].message.content.strip())
+        response_message = ChatMessage.from_dict(
+            response.choices[0].message.model_dump(
+                include={"role", "content", "tool_calls"}
+            )
+        )
+        return self.post_process_message(
+            message=response_message, tools_to_call_from=tools_to_call_from
+        )
 
     def get_token_usage(self) -> Dict[str, int]:
         """Get the cumulative token usage statistics.

@@ -1,272 +1,185 @@
-import re
-from typing import Any, Dict, Optional, Tuple, Union
-
-import pandas as pd
+import logging
+import time
+from collections import deque
+from typing import Any, Generator, List, Optional
 
 from src.agent.base import BaseAgent
+from src.agent.exceptions import AgentError
 from src.chat.base import LLMClientInterface
-from src.database.connector import BaseDatabaseConnector
-from src.utils.load import load_prompt_from_yaml
-from src.utils.logger import init_logger
+from src.memory.base import (
+    ActionStep,
+    FinalAnswerStep,
+    SystemPromptStep,
+    TaskStep,
+    ToolCall,
+)
+from src.prompts.base import PromptTemplates
+from src.tool.base import BaseTool
 
-logger = init_logger(name="agent")
 
-
-class SQLReActAgent(BaseAgent):
-    """
-    SQL ReAct agent that uses reasoning and SQL execution
-    to answer questions about databases
-    """
-
+class ToolReActAgent(BaseAgent):
     def __init__(
         self,
-        db_connector: BaseDatabaseConnector,
-        model_id: str,
         client: LLMClientInterface,
-        prompt_file_path: str,
-        prompt_key: str = "prompt",
-        max_iterations: int = 3,
-        verbose: bool = False,
-    ):
+        tools: List[BaseTool],
+        prompt_templates: PromptTemplates,
+        max_steps: int = 3,
+        logger: Optional[logging.Logger] = None,
+        log_to_file: bool = False,
+        log_dir: str = "logs",
+    ) -> None:
         super().__init__(
-            model_id=model_id,
             client=client,
-            prompt_file_path=prompt_file_path,
-            prompt_key=prompt_key,
-            max_iterations=max_iterations,
-            verbose=verbose,
-        )
-        self.db_connector = db_connector
-        self.few_shot_examples = load_prompt_from_yaml(
-            prompt_file_path, "few_shot_examples"
+            tools=tools,
+            prompt_templates=prompt_templates,
+            max_steps=max_steps,
+            logger=logger,
+            log_to_file=log_to_file,
+            log_dir=log_dir,
         )
 
-    def get_db_schema(self) -> str:
-        """Retrieve and format database schema information"""
-        if not self.db_connector.connection:
+    def run(self, task: str, max_steps: int = 10, stream: bool = False) -> Any:
+        self.logger.info(f"Starting agent run with task: {task}")
+        self.task = task
+        self.system_prompt = self._initialize_system_prompt()
+        self.memory.system_prompt = SystemPromptStep(system_prompt=self.system_prompt)
+        self.memory.steps.append(TaskStep(task=self.task))
+        if stream:
+            self.logger.info("Running in stream mode")
+            return self._run(task=task, max_steps=max_steps)
+
+        # Get the last step from the generator and check if it's a FinalAnswerStep
+        self.logger.info(f"Running with max_steps: {max_steps}")
+        last_step = deque(self._run(task=task, max_steps=max_steps), maxlen=1)[0]
+        if isinstance(last_step, FinalAnswerStep):
+            self.logger.info("Run completed with final answer")
+            return str(last_step.final_answer)
+        else:
+            # If it's not a FinalAnswerStep, return some default value or error message
+            self.logger.info("Run completed without final answer step")
+            return (
+                str(last_step.action_output)
+                if hasattr(last_step, "action_output")
+                and last_step.action_output is not None
+                else ""
+            )
+
+    def _run(
+        self, task: str, max_steps: int
+    ) -> Generator[ActionStep | FinalAnswerStep, None, None]:
+        final_answer = None
+        self.step_num = 1
+        self.logger.info(f"Starting _run with task: {task}")
+        while self.step_num <= max_steps and final_answer is None:
+            start_time = time.time()
+            self.logger.info(f"Executing step {self.step_num}/{max_steps}")
+            if self.step_num == 1:
+                planning_step = self._create_planning_step(task)
+                self.memory.steps.append(planning_step)
+                yield planning_step
+            action_step = self._create_action_step(start_time)
             try:
-                self.db_connector.connect()
-            except Exception as e:
-                raise ConnectionError(f"Failed to connect to the database: {e}")
+                final_answer = self._execute_step(task, action_step)
+                if final_answer is not None:
+                    self.logger.info("Final answer received")
+                    self.logger.info(f"Final answer: {final_answer}")
+            except AgentError as e:
+                self.logger.error(f"Agent error in step {self.step_num}: {e}")
+                action_step.error = e
+            finally:
+                self._finalize_step(action_step, start_time)
+                self.memory.steps.append(action_step)
+                self.logger.info(
+                    f"Step {self.step_num} completed in {action_step.duration:.2f}s"
+                )
+                self.step_num += 1
+                yield action_step
+        if final_answer is None:
+            self.logger.info(
+                "Max steps reached without final answer, handling max steps"
+            )
+            final_answer = self._handle_max_steps(task=task, start_time=start_time)
+            yield action_step
+        self.logger.info("Run completed, yielding final answer")
+        yield FinalAnswerStep(final_answer=final_answer)
+
+    def step(self, memory_step: ActionStep) -> Any:
+        memory_messages = self.write_memory_to_messages()
+        self.logger.info("Getting model response")
+        self.logger.info("[Action progress] Requesting response from model")
         try:
-            tables = self.db_connector.get_tables()
+            model_message = self.client.chat(
+                memory_messages,
+                tools_to_call_from=list(self.tools.values()),
+                stop_sequences=["Observation:", "Calling tools:"],
+            )
+            memory_step.model_output_message = model_message
+            self.logger.debug(f"Model output: {model_message.content}")
         except Exception as e:
-            raise ConnectionError(f"Failed to retrieve tables: {e}")
+            self.logger.error(f"Error while generating model message: {e}")
+            self.logger.info("[Action progress] Failed to get response from model")
+            raise AgentError(f"Error while generating model message: {e}")
 
-        schema_info = []
+        if model_message.tool_calls is None or len(model_message.tool_calls) == 0:
+            self.logger.error("Model did not call any tools")
+            self.logger.info(
+                "[Action progress] Model response did not include any tool calls"
+            )
+            raise AgentError("Model did not call any tools.")
 
-        for table in tables:
-            try:
-                table_schema = self.db_connector.get_table_schema(table)
+        tool_call = model_message.tool_calls[0]
+        tool_name, tool_call_id = tool_call.function.name, tool_call.id
+        tool_arguments = tool_call.function.arguments
+        self.logger.info(f"Model called tool: {tool_name}")
+        self.logger.info(f"[Action progress] Model selected tool: {tool_name}")
 
-                columns = []
-                for col_info in table_schema.get(table, []):
-                    # 0: cid, 1: name, 2: type, 3: notnull, 4: dflt_value, 5: pk
-                    col_name = col_info[1]
-                    col_type = col_info[2]
-                    is_pk = "PRIMARY KEY" if col_info[5] == 1 else ""
-                    is_not_null = "NOT NULL" if col_info[3] == 1 else ""
+        memory_step.tool_calls = [
+            ToolCall(name=tool_name, arguments=tool_arguments, id=tool_call_id)
+        ]
 
-                    column_def = f"{col_name} {col_type} {is_pk} {is_not_null}".strip()
-                    columns.append(f"  {column_def}")
-
-                table_def = f"CREATE TABLE {table} (\n" + ",\n".join(columns) + "\n);"
-                schema_info.append(table_def)
-
-            except Exception as e:
-                schema_info.append(f"Error getting schema for table {table}: {str(e)}")
-
-        return "\n\n".join(schema_info)
-
-    def extract_sql_query(self, text: str) -> str:
-        """Extract SQL query from code blocks or plain text"""
-        if not text:
-            return ""
-
-        sql_match = re.search(r"```sql\n(.*?)\n```", text, re.DOTALL)
-        if sql_match:
-            return sql_match.group(1).strip()
-        return text.strip()
-
-    def execute_query(self, query: str) -> Tuple[bool, Union[pd.DataFrame, str]]:
-        """Execute SQL query and return results or error message"""
-        try:
-            if not self.db_connector.connection:
-                self.db_connector.connect()
-
-            results = self.db_connector.execute_query(query)
-
-            if (
-                isinstance(results, pd.DataFrame)
-                and "error" in results.columns
-                and len(results) > 0
-            ):
-                error_message = results["error"].iloc[0]
-                return False, error_message
-
-            return True, results
-        except Exception as e:
-            return False, str(e)
-
-    def _execute_and_format_query(
-        self, sql_query: str
-    ) -> Tuple[bool, Union[pd.DataFrame, str], str]:
-        """Execute query and format results for display"""
-        success, query_result = self.execute_query(sql_query)
-
-        if not success:
-            return False, query_result, str(query_result)
-
-        if isinstance(query_result, pd.DataFrame):
-            if not query_result.empty:
-                result_str = query_result.head(10).to_string()
-                if len(query_result) > 100:
-                    result_str += f"\n... and {len(query_result) - 100} more rows"
+        # Execute
+        if tool_name == "final_answer":
+            self.logger.info("Final answer tool called")
+            self.logger.info("[Action progress] Processing final answer")
+            if isinstance(tool_arguments, dict):
+                if "answer" in tool_arguments:
+                    answer = tool_arguments["answer"]
+                else:
+                    answer = tool_arguments
             else:
-                result_str = "No results"
-        else:
-            result_str = str(query_result)
-
-        if self.verbose:
-            logger.info("\nQuery Execution Results:")
-            logger.info(result_str)
-
-        return True, query_result, result_str
-
-    def _build_initial_context(
-        self, question: str, db_schema: str, few_shot_examples: Optional[str] = None
-    ) -> str:
-        """Build the initial prompt context with question and schema"""
-        context = f"""Question: {question}
-
-        Database Schema:
-        {db_schema}
-
-        Start the ReAct process to answer this question. Begin with a <reasoning> tag to explain your approach, then use the <sql> tag to write the necessary SQL query.
-        """
-
-        if few_shot_examples:
-            context += f"\n\n{self.few_shot_examples}"
-        return context
-
-    def _create_query_history_entry(
-        self, turn: int, query: str, success: bool, result_info: str
-    ) -> Dict:
-        """Create history entry for a query execution"""
-        if success:
-            return {
-                "turn": turn,
-                "action": "sql_query",
-                "query": query,
-                "success": True,
-                "result_preview": result_info[:500] if result_info else "Empty result",
-            }
-        else:
-            return {
-                "turn": turn,
-                "action": "sql_query",
-                "query": query,
-                "success": False,
-                "error": result_info,
-            }
-
-    def _format_observation(self, success: bool, result_info: str) -> str:
-        """Format observation based on query execution result"""
-        if success:
-            return f"\nExecution Results: \n{result_info}\n"
-        else:
-            return f"\nExecution Error: \n{result_info}\n"
-
-    def _get_next_instruction(self, success: bool) -> str:
-        """Get next instruction based on query execution success"""
-        if success:
-            return "If you need additional reasoning or another query, explain using the <reasoning> tag. If you're completely certain and ready to provide a final answer, use the <answer> tag. Only use the <answer> tag when you are absolutely confident in your response."
-        else:
-            return "Please fix the error and try again. Write your query inside the <sql> tag."
-
-    def process(self, question: str, use_few_shot: bool = False) -> Dict[str, Any]:
-        """Process a question to generate SQL queries and answers"""
-        db_schema = self.get_db_schema()
-        few_shot_examples = self.few_shot_examples if use_few_shot else None
-        context = self._build_initial_context(question, db_schema, few_shot_examples)
-
-        if self.verbose:
-            logger.info("Initial Context:")
-            logger.info(context)
-
-        history = []
-        turns = 0
-        final_answer = ""
-        final_query = ""
-        final_result = None
-
-        while turns < self.max_iterations:
-            turns += 1
-
-            llm_response = self.client.chat(
-                system_prompt=self.prompt,
-                user_prompt=context,
-            )
-
-            reasoning = self.extract_section(llm_response, "reasoning")
-            sql_section = self.extract_section(llm_response, "sql")
-            answer = self.extract_section(llm_response, "answer")
-            if reasoning:
-                self._log_debug_info(reasoning, "Reasoning")
-                history.append(
-                    {"turn": turns, "action": "reasoning", "reasoning": reasoning}
-                )
-
-            if sql_section:
-                sql_query = self.extract_sql_query(sql_section)
-                final_query = sql_query
-
-                self._log_debug_info(sql_query, "SQL Query")
-
-                success, query_result, result_str = self._execute_and_format_query(
-                    sql_query
-                )
-
-                if success:
-                    final_result = query_result
-
-                history.append(
-                    self._create_query_history_entry(
-                        turns,
-                        sql_query,
-                        success,
-                        result_str,
-                    )
-                )
-
-                observation = self._format_observation(success, result_str)
-
-            # Add context for agent
-            next_instruction = self._get_next_instruction(
-                success if sql_section else True
-            )
-            observation = observation if sql_section else ""
-            context += f"\n{llm_response}\n{observation}\n{next_instruction}"
-
-            if answer:
-                self._log_debug_info(answer, "Final Answer")
+                answer = tool_arguments
+            if (
+                isinstance(answer, str) and answer in self.state.keys()
+            ):  # if the answer is a state variable, return the value
+                final_answer = self.state[answer]
+            else:
                 final_answer = answer
 
-                history.append({"turn": turns, "action": "answer", "answer": answer})
-                break
+            memory_step.action_output = final_answer
+            self.logger.info("Final answer generated")
+            self.logger.info("[Action progress] Final answer generated successfully")
+            return final_answer
+        else:
+            if tool_arguments is None:
+                tool_arguments = {}
+            self.logger.info(
+                f"Executing tool: {tool_name} with arguments: {tool_arguments}"
+            )
+            observation = self.execute_tool_call(tool_name, tool_arguments)
+            updated_information = str(observation).strip()
+            memory_step.observations = updated_information
+            self.logger.info(f"Tool execution completed for: {tool_name}")
+            return None
 
-        if not final_answer:
-            final_answer = "None"
-            self._log_debug_info(final_answer, "Max attempts reached. Final answer")
-
-        return {
-            "question": question,
-            "answer": final_answer,
-            "query": final_query,
-            "result": final_result,
-            "turns": turns,
-            "history": history,
-            "success": bool(final_answer),
-            "system_prompt": self.prompt,
-            "context": context,
-        }
+    def _execute_step(self, task: str, memory_step: ActionStep) -> Any:
+        self.logger.info(f"Executing step {memory_step.step_number}")
+        self.logger.info(f"[Action progress] Starting step {memory_step.step_number}")
+        final_answer = self.step(memory_step)
+        if final_answer is not None:
+            self.logger.info("Step produced final answer")
+            self.logger.info("[Action progress] Step produced final answer")
+        else:
+            self.logger.info(
+                f"[Action progress] Completed step {memory_step.step_number} without final answer"
+            )
+        return final_answer
