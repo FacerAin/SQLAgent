@@ -8,6 +8,7 @@ import yaml
 from tqdm import tqdm
 
 from src.agent.base import BaseAgent
+from src.agent.react import ToolReActAgent
 from src.chat.base import LLMClientInterface
 from src.chat.factory import ChatModelFactory
 from src.database.connector import BaseDatabaseConnector, SqliteDatabaseConnector
@@ -148,9 +149,13 @@ class EvaluationContext:
         assert self.logger is not None, "Logger initialization failed."  # For mypy
 
         # Configure agent logger
-        agent_logger = logging.getLogger("agent")
+        agent_logger = init_logger(
+            name="agent",
+            log_to_file=self.args.log_to_file,
+            log_dir=self.args.log_dir,
+        )
         if self.args.agent_verbose:
-            agent_logger.setLevel(logging.INFO)
+            agent_logger.setLevel(logging.DEBUG)
         else:
             agent_logger.setLevel(logging.ERROR)  # Only show errors from agent
 
@@ -192,11 +197,14 @@ class EvaluationContext:
 
         with open(self.args.prompt_path, "r", encoding="utf-8") as f:
             self.prompt_templates = yaml.safe_load(f)
-        self.agent = BaseAgent(
+        self.agent = ToolReActAgent(
             client=self.client,
             tools=tools,
             max_steps=10,
             prompt_templates=self.prompt_templates,
+            logger=agent_logger,
+            log_to_file=self.args.log_to_file,
+            log_dir=self.args.log_dir,
         )
 
         return self
