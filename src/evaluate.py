@@ -114,6 +114,13 @@ def parse_arguments() -> argparse.Namespace:
         help="The model ID to use for the judge.",
     )
 
+    parser.add_argument(
+        "--custom_time",
+        type=str,
+        default="2105-12-31 23:59:00",
+        help="Custom time to use for the database connection. If you don't want to use it, set it to 'None'.",
+    )
+
     return parser.parse_args()
 
 
@@ -156,8 +163,14 @@ class EvaluationContext:
         if self.args.num_samples >= 0:
             self.datasets = self.datasets[: self.args.num_samples]
 
+        if self.args.custom_time == "None":
+            self.args.custom_time = None
+
         # Initialize database connector
-        self.db_connector = SqliteDatabaseConnector(self.args.database)
+        self.db_connector = SqliteDatabaseConnector(
+            self.args.database,
+            custom_time=self.args.custom_time if self.args.custom_time else None,
+        )
         self.db_connector.connect()
 
         # Initialize model client
@@ -165,18 +178,6 @@ class EvaluationContext:
         self.judge_client = ChatModelFactory.load_model(
             model_id=self.args.judge_model_id
         )
-
-        # # Initialize agent
-        # self.agent = AgentFactory.load_agent(
-        #     agent_type=self.args.agent_type,
-        #     db_connector=self.db_connector,
-        #     model_id=self.args.model_id,
-        #     client=self.client,
-        #     prompt_file_path=self.args.prompt_path,  # Set default prompt file path
-        #     prompt_key="prompt",
-        #     max_iterations=self.args.max_iterations,
-        #     verbose=self.args.agent_verbose,
-        # )
         sql_tool = SQLTool(db_connector=self.db_connector)
         python_sql_tool = PythonTool(db_connector=self.db_connector)
         final_answer_tool = FinalAnswerTool()
@@ -212,7 +213,7 @@ def process_samples(context: EvaluationContext) -> List[Dict[str, Any]]:
 
     for sample in tqdm(context.datasets, desc="Evaluating samples", unit="sample"):
         question = sample.get("question")
-        answer = sample.get("answer")
+        answer = sample.get("expected_answer", sample.get("answer"))
         gold_sql_query = sample.get("query")
 
         if not question:
@@ -225,31 +226,44 @@ def process_samples(context: EvaluationContext) -> List[Dict[str, Any]]:
         total_turns = context.agent.step_num
         history = context.agent.write_memory_to_messages()[1:]
 
-        # Store the evaluation results
-        evaluate_results.append(
-            {
-                "id": sample.get("id"),
-                "answer_type": sample.get("answer_type", ""),
-                "table_num": sample.get("table_num", ""),
-                "question": question,
-                "expected_answer": answer,
-                "generated_answer": agent_answer,
-                # "sql_query": result["query"],
-                "gold_sql_query": gold_sql_query,
-                "total_turns": total_turns,
-                "history": history,
-            }
-        )
+        # Add sample-specific evaluation metrics
+        sample_metrics = {
+            "exact_match": exact_match(pred=agent_answer, ans=answer),
+            "normalized_match": normalize_exact_match(pred=agent_answer, ans=answer),
+            "llm_match": verify_answer_by_llm(
+                pred=agent_answer,
+                ans=answer,
+                question=question,
+                client=context.judge_client,
+            ),
+        }
+
+        # Store the evaluation results with per-sample metrics
+        sample_result = {
+            "id": sample.get("id"),
+            "answer_type": sample.get("answer_type", ""),
+            "table_num": sample.get("table_num", ""),
+            "question": question,
+            "expected_answer": answer,
+            "generated_answer": agent_answer,
+            # "sql_query": result["query"],
+            "gold_sql_query": gold_sql_query,
+            "total_turns": total_turns,
+            "history": history,
+            "sample_metrics": sample_metrics,  # Add the per-sample metrics here
+        }
+
+        evaluate_results.append(sample_result)
 
     return evaluate_results
 
 
 def calculate_metrics(
     evaluate_results: List[Dict[str, Any]], context: EvaluationContext
-) -> Dict[str, int]:
-    """Calculate evaluation metrics."""
+) -> Dict[str, Any]:
+    """Calculate aggregate evaluation metrics from individual sample metrics."""
     evaluation_stats = {
-        "total_num": 0,
+        "total_num": len(evaluate_results),
         "correct": 0,
         "unfinished": 0,
         "incorrect": 0,
@@ -262,66 +276,69 @@ def calculate_metrics(
             "model_id": context.args.model_id,
             "dataset_path": context.args.dataset_path,
         },
+        "per_sample_summary": [],  # Add a summary of per-sample performance
     }
 
-    for sample in tqdm(evaluate_results, desc="Evaluating metrics", unit="sample"):
-        evaluation_stats["total_num"] += 1
-        if exact_match(pred=sample["generated_answer"], ans=sample["expected_answer"]):
+    # Aggregate metrics based on individual sample metrics
+    for sample in tqdm(evaluate_results, desc="Aggregating metrics", unit="sample"):
+        sample_metrics = sample.get("sample_metrics", {})
+
+        # Add to aggregate counts
+        if sample_metrics.get("exact_match", False):
             evaluation_stats["correct"] += 1
         elif sample["generated_answer"] == "None":
             evaluation_stats["unfinished"] += 1
         else:
             evaluation_stats["incorrect"] += 1
 
-        # Check SQL equality
-        # if verify_sql_query_equivalent(
-        #     pred_sql_query=sample["sql_query"],
-        #     gold_sql_query=sample["gold_sql_query"],
-        #     db_connector=context.db_connector,
-        # ):
-        #     evaluation_stats["sql_equality"] += 1
-
-        # if verify_sql_query_executable(
-        #     sql_query=sample["sql_query"],
-        #     db_connector=context.db_connector,
-        # ):
-        #     evaluation_stats["sql_executable"] += 1
-
-        if normalize_exact_match(
-            pred=sample["generated_answer"],
-            ans=sample["expected_answer"],
-        ):
+        if sample_metrics.get("normalized_match", False):
             evaluation_stats["norm_correct"] += 1
 
-        if verify_answer_by_llm(
-            pred=sample["generated_answer"],
-            ans=sample["expected_answer"],
-            question=sample["question"],
-            client=context.judge_client,
-        ):
+        if sample_metrics.get("llm_match", False):
             evaluation_stats["llm_correct"] += 1
+
+        # Add a simplified summary for this sample
+        evaluation_stats["per_sample_summary"].append(
+            {
+                "id": sample.get("id", "unknown"),
+                "exact_match": sample_metrics.get("exact_match", False),
+                "normalized_match": sample_metrics.get("normalized_match", False),
+                "llm_match": sample_metrics.get("llm_match", False),
+            }
+        )
+
+    # Calculate success rates
+    if evaluation_stats["total_num"] > 0:
+        evaluation_stats["exact_match_rate"] = (
+            evaluation_stats["correct"] / evaluation_stats["total_num"]
+        )
+        evaluation_stats["normalized_match_rate"] = (
+            evaluation_stats["norm_correct"] / evaluation_stats["total_num"]
+        )
+        evaluation_stats["llm_match_rate"] = (
+            evaluation_stats["llm_correct"] / evaluation_stats["total_num"]
+        )
 
     return evaluation_stats
 
 
 def log_evaluation_results(
-    logger: logging.Logger, args: argparse.Namespace, stats: Dict[str, int]
+    logger: logging.Logger, args: argparse.Namespace, stats: Dict[str, Any]
 ) -> None:
     """Log evaluation results."""
     if args.verbose:
         logger.info("Evaluation Results:")
+        # Log aggregate metrics
         for key, value in stats.items():
-            logger.info(f"{key}: {value}")
-        if stats["total_num"] > 0:
-            accuracy = stats["correct"] / stats["total_num"]
-            logger.info(f"Accuracy: {accuracy:.2%}")
+            if key not in ["metadata", "per_sample_summary"]:  # Skip detailed data
+                logger.info(f"{key}: {value}")
 
 
 def save_results(
     logger: logging.Logger,
     args: argparse.Namespace,
     evaluate_results: List[Dict[str, Any]],
-    evaluation_stats: Dict[str, int] = None,
+    evaluation_stats: Dict[str, Any] = None,
 ) -> None:
     """Save results to a file if requested."""
     if args.save_result:
@@ -345,12 +362,12 @@ def save_results(
         logger.info(f"Saving evaluation results to {output_path}")
 
         final_results = {
-            "evaluation_history": evaluate_results,
+            "evaluation_history": evaluate_results,  # This now includes per-sample metrics
         }
 
-        # Add metrics if they were calculated
+        # Add aggregate metrics if they were calculated
         if evaluation_stats:
-            final_results["metric"] = evaluation_stats
+            final_results["metrics"] = evaluation_stats
 
         with open(output_path, "w") as f:
             json.dump(final_results, f, indent=4)
@@ -373,6 +390,43 @@ def load_evaluate_results(results_path: str) -> List[Dict[str, Any]]:
     return data["evaluation_history"]
 
 
+def add_sample_metrics_to_loaded_results(
+    evaluate_results: List[Dict[str, Any]], context: EvaluationContext
+) -> List[Dict[str, Any]]:
+    """Add sample metrics to results loaded from a file if they don't have them."""
+    updated_results = []
+
+    for sample in tqdm(evaluate_results, desc="Adding sample metrics", unit="sample"):
+        # Skip if sample already has metrics
+        if "sample_metrics" in sample:
+            updated_results.append(sample)
+            continue
+
+        # Add sample-specific metrics
+        question = sample.get("question")
+        generated_answer = sample.get("generated_answer")
+        expected_answer = sample.get("expected_answer")
+
+        sample_metrics = {
+            "exact_match": exact_match(pred=generated_answer, ans=expected_answer),
+            "normalized_match": normalize_exact_match(
+                pred=generated_answer, ans=expected_answer
+            ),
+            "llm_match": verify_answer_by_llm(
+                pred=generated_answer,
+                ans=expected_answer,
+                question=question,
+                client=context.judge_client,
+            ),
+        }
+
+        # Add metrics to sample
+        sample["sample_metrics"] = sample_metrics
+        updated_results.append(sample)
+
+    return updated_results
+
+
 def main() -> None:
     """Main function to coordinate the evaluation process."""
     # Parse arguments
@@ -393,31 +447,36 @@ def main() -> None:
         logger.info(f"Loading evaluation results from {args.results_path}")
         evaluate_results = load_evaluate_results(args.results_path)
         logger.info(f"Loaded {len(evaluate_results)} evaluation results")
-        # Generate new results using the context manager
+
+    # Generate new results or add metrics to loaded results using the context manager
     with EvaluationContext(args) as context:
-        # Process all samples
+        # Process all samples for new results
         if not evaluate_results:
             logger.info("Processing samples for evaluation")
             evaluate_results = process_samples(context)
+        else:
+            # Add sample metrics to loaded results if they don't have them
+            logger.info("Adding sample metrics to loaded results")
+            evaluate_results = add_sample_metrics_to_loaded_results(
+                evaluate_results, context
+            )
 
-        # Save raw results if requested and skipping metrics
-        if args.skip_metrics and args.save_result:
-            save_results(context.logger, args, evaluate_results)
-            logger.info("Skipping metrics calculation as requested")
-
-        # Calculate metrics if not skipped
+        # Calculate aggregate metrics if not skipped
         if not args.skip_metrics and evaluate_results:
-            logger.info("Calculating evaluation metrics")
+            logger.info("Calculating aggregate evaluation metrics")
             evaluation_stats = calculate_metrics(evaluate_results, context)
 
             # Log results
             log_evaluation_results(logger, args, evaluation_stats)
 
-            # Save complete results with metrics if requested and not already saved
-            if args.save_result and not (
-                args.results_path is None and args.skip_metrics
-            ):
+            # Save results with both per-sample and aggregate metrics
+            if args.save_result:
                 save_results(logger, args, evaluate_results, evaluation_stats)
+        elif args.save_result:
+            # Save raw results without aggregate metrics
+            save_results(logger, args, evaluate_results)
+            if args.skip_metrics:
+                logger.info("Skipping aggregate metrics calculation as requested")
 
 
 if __name__ == "__main__":

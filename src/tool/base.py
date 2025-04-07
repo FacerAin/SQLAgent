@@ -146,7 +146,7 @@ class PythonTool(BaseTool):
         self.db_connector = db_connector
         self.timeout = timeout
 
-    def forward(self, code: str) -> str:
+    def forward(self, code: str) -> str:  # noqa: C901
         """
         Execute Python code and return the value assigned to _result.
         Handles SQLite thread limitations.

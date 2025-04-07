@@ -40,10 +40,11 @@ class BaseDatabaseConnector(ABC):
 
 
 class SqliteDatabaseConnector(BaseDatabaseConnector):
-    def __init__(self, db_path: str) -> None:
+    def __init__(self, db_path: str, custom_time: str | None = None) -> None:
         super().__init__(db_path)
         self.db_path = db_path
         self.connection: Optional[sqlite3.Connection] = None
+        self.custom_time = custom_time
 
     def _ensure_connection(self) -> None:
         if not self.connection:
@@ -53,6 +54,29 @@ class SqliteDatabaseConnector(BaseDatabaseConnector):
         if not os.path.exists(self.db_path):
             raise FileNotFoundError(f"Database file '{self.db_path}' not found.")
         self.connection = sqlite3.connect(self.db_path)
+
+        # Set custom time functions if provided, but this is not a standard SQLite feature
+        # and may not work as expected. This is just a placeholder.
+        # SQLite does not support custom time functions directly.
+        if self.custom_time:
+
+            def override_time():
+                return self.custom_time
+
+            self.connection.create_function("current_time", 0, override_time)
+            self.connection.create_function("datetime", 0, override_time)
+            self.connection.create_function("now", 0, override_time)
+
+            def custom_strftime(format_str, timestring=None):
+                if timestring is None or timestring == "now":
+                    return sqlite3.datetime.datetime.strptime(
+                        self.custom_time, "%Y-%m-%d %H:%M:%S"
+                    ).strftime(format_str)
+                return sqlite3.datetime.datetime.strptime(
+                    timestring, "%Y-%m-%d %H:%M:%S"
+                ).strftime(format_str)
+
+            self.connection.create_function("strftime", 2, custom_strftime)
         self._ensure_connection()
         return self.connection
 
