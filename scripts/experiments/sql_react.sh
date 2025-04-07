@@ -29,6 +29,8 @@ for MODEL_ID in "${MODEL_IDS[@]}"; do
     --log_to_file \
     --use_few_shot \
     --verbose \
+    --agent_verbose \
+
     "$@"
 
   echo "Evaluation completed for model: $MODEL_ID"
