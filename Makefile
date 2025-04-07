@@ -25,5 +25,4 @@ clean:
 	find . -type f -name "*.pyc" -delete
 
 install-dev:
-	pip install -e ".[dev]"
 	pre-commit install
