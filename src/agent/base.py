@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from src.agent.exceptions import AgentError
 from src.chat.base import LLMClientInterface, MessageRole
-from src.memory.base import ActionStep, AgentMemory, PlanningStep
+from src.memory.base import ActionStep, AgentMemory, Message, PlanningStep
 from src.prompts.base import PromptTemplates, populate_template
 from src.tool.base import BaseTool, FinalAnswerTool
 from src.utils.logger import init_logger
@@ -72,7 +72,6 @@ class BaseAgent(ABC):
             tool_name (`str`): Name of the tool or managed agent to execute.
             arguments (dict[str, str] | str): Arguments passed to the tool call.
         """
-        self.logger.info(f"Executing tool call: {tool_name}")
         # Check if the tool exists
         available_tools = {**self.tools}
         if tool_name not in available_tools:
@@ -87,10 +86,6 @@ class BaseAgent(ABC):
 
         try:
             # Call tool with appropriate arguments
-            self.logger.info(f"Calling tool: {tool_name}")
-            self.logger.info(
-                f"[Action progress] Starting execution of tool: {tool_name}"
-            )
             start_time = time.time()
             result = None
             if isinstance(arguments, dict):
@@ -101,10 +96,6 @@ class BaseAgent(ABC):
                 raise TypeError(f"Unsupported arguments type: {type(arguments)}")
 
             execution_time = time.time() - start_time
-            self.logger.info(f"Tool {tool_name} executed in {execution_time:.2f}s")
-            self.logger.info(
-                f"[Action progress] Completed execution of tool: {tool_name} in {execution_time:.2f}s"
-            )
             return result
 
         except TypeError as e:
@@ -119,23 +110,18 @@ class BaseAgent(ABC):
                 f"Tool description: '{description}'"
             )
             self.logger.error(f"Tool execution error: {error_msg}")
-            self.logger.info(
-                f"[Action progress] Failed execution of tool: {tool_name} due to argument error"
-            )
             raise AgentError(error_msg) from e
 
     def _setup_tools(self, tools: List[BaseTool]) -> Dict:
-        self.logger.info("Setting up tools")
         setup_tools = {tool.name: tool for tool in tools}
         if not setup_tools:
-            self.logger.info("No tools provided, using default FinalAnswerTool")
+            self.logger.debug("No tools provided, using default FinalAnswerTool")
             setup_tools = {"final_answer": FinalAnswerTool()}
         else:
-            self.logger.info(f"Available tools: {', '.join(setup_tools.keys())}")
+            self.logger.debug(f"Available tools: {', '.join(setup_tools.keys())}")
         return setup_tools
 
     def _initialize_system_prompt(self) -> str:
-        self.logger.info("Initializing system prompt")
         system_prompt = populate_template(
             self.prompt_templates["system_prompt"], variables={"tools": self.tools}
         )
@@ -143,30 +129,26 @@ class BaseAgent(ABC):
         return system_prompt
 
     def _create_planning_step(self, task: str) -> PlanningStep:
-        self.logger.info("Creating planning step")
-        input_messages = [
+        input_messages_dict = [
             {
                 "role": MessageRole.USER,
-                "content": [
-                    {
-                        "type": "text",
-                        "text": populate_template(
-                            self.prompt_templates["planning"]["initial_plan"],
-                            variables={"task": task, "tools": self.tools},
-                        ),
-                    }
-                ],
+                "content": populate_template(
+                    self.prompt_templates["planning"]["initial_plan"],
+                    variables={"task": task, "tools": self.tools},
+                ),
             }
         ]
 
-        self.logger.info("Getting plan from model")
+        # Convert dictionary messages to Message objects
+        input_messages = [Message(role=msg["role"], content=msg["content"]) for msg in input_messages_dict]  # type: ignore
+
         try:
-            plan_message = self.client.chat(input_messages)
+            plan_message = self.client.chat(input_messages_dict)
             self.logger.debug(f"Plan message received: {plan_message.content[:100]}...")
             plan = textwrap.dedent(
                 f"""Here are the facts I know and the plan of action that I will follow to solve the task:\n```\n{plan_message}\n```"""
             )
-            self.logger.info("Planning step created successfully")
+            self.logger.debug("Planning step created successfully")
             self.logger.debug(f"Plan: {plan}")
             return PlanningStep(
                 model_input_messages=input_messages,
@@ -178,7 +160,7 @@ class BaseAgent(ABC):
             raise
 
     def _create_action_step(self, start_time: float) -> ActionStep:
-        self.logger.info(f"Creating action step {self.step_num}")
+        self.logger.debug(f"Creating action step {self.step_num}")
         action_step = ActionStep(
             model_input_messages=self.input_messages,
             start_time=start_time,
@@ -189,16 +171,13 @@ class BaseAgent(ABC):
     def _finalize_step(self, memory_step: ActionStep, start_time: float) -> None:
         memory_step.end_time = time.time()
         memory_step.duration = memory_step.end_time - start_time
-        self.logger.info(
+        self.logger.debug(
             f"Finalized step {memory_step.step_number} (duration: {memory_step.duration:.2f}s)"
-        )
-        self.logger.info(
-            f"[Action progress] Finalized step {memory_step.step_number} (took {memory_step.duration:.2f}s)"
         )
 
     def write_memory_to_messages(
         self,
-    ) -> List[Dict[str, str]]:
+    ) -> List[Message]:
         self.logger.debug("Writing memory to messages")
         messages = self.memory.system_prompt.to_messages()
         for memory_step in self.memory.steps:
@@ -207,50 +186,40 @@ class BaseAgent(ABC):
         return messages
 
     def provide_final_answer(self, task: str) -> str:
-        self.logger.info("Providing final answer")
         messages = [
             {
                 "role": MessageRole.SYSTEM,
-                "content": [
-                    {
-                        "type": "text",
-                        "text": self.prompt_templates["final_answer"]["pre_messages"],
-                    }
-                ],
+                "content": self.prompt_templates["final_answer"]["pre_messages"],
             }
         ]
 
-        messages += self.write_memory_to_messages()[1:]
+        memory_messages = self.write_memory_to_messages()[1:]
+        messages += [
+            {"role": message.role, "content": message.content}  # type: ignore
+            for message in memory_messages
+        ]
 
         messages += [
             {
                 "role": MessageRole.USER,
-                "content": [
-                    {
-                        "type": "text",
-                        "text": populate_template(
-                            self.prompt_templates["final_answer"]["post_messages"],
-                            variables={"task": task},
-                        ),
-                    }
-                ],
+                "content": populate_template(
+                    self.prompt_templates["final_answer"]["post_messages"],
+                    variables={"task": task},
+                ),
             }
         ]
-        self.logger.info("Requesting final answer from model")
         try:
             final_message = self.client.chat(messages)
-            self.logger.info("Final answer received from model")
             self.logger.debug(f"Final answer: {final_message.content[:100]}...")
-            return final_message
+            return final_message.content
         except Exception as e:
             self.logger.error(f"Error while generating final answer: {e}")
             raise AgentError(f"Error while generating final answer: {e}")
 
-    def _handle_max_steps(self, task: str, start_time: time) -> str:
+    def _handle_max_steps(self, task: str, start_time: Any) -> str:
         self.logger.warning(
             f"Max steps ({self.step_num}) reached without finding answer"
         )
-        self.logger.info("Providing final answer through fallback mechanism")
         final_answer = self.provide_final_answer(task)
         final_memory_step = ActionStep(
             step_number=self.step_num,
@@ -260,7 +229,6 @@ class BaseAgent(ABC):
         final_memory_step.end_time = time.time()
         final_memory_step.duration = final_memory_step.end_time - start_time
         self.memory.steps.append(final_memory_step)
-        self.logger.info("Final answer generated through fallback mechanism")
         return final_answer
 
     @abstractmethod

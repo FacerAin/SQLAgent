@@ -9,6 +9,7 @@ from src.chat.base import LLMClientInterface
 from src.memory.base import (
     ActionStep,
     FinalAnswerStep,
+    PlanningStep,
     SystemPromptStep,
     TaskStep,
     ToolCall,
@@ -66,7 +67,7 @@ class ToolReActAgent(BaseAgent):
 
     def _run(
         self, task: str, max_steps: int
-    ) -> Generator[ActionStep | FinalAnswerStep, None, None]:
+    ) -> Generator[ActionStep | FinalAnswerStep | PlanningStep, None, None]:
         final_answer = None
         self.step_num = 1
         self.logger.info(f"Starting _run with task: {task}")

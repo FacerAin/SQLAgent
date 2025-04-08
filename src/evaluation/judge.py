@@ -1,5 +1,3 @@
-from typing import List
-
 import pandas as pd
 from sqlparse import format  # type: ignore
 
@@ -10,44 +8,41 @@ from src.utils.logger import init_logger
 logger = init_logger(name="judge")
 
 
-def exact_match(pred: str, ans: List[str]) -> bool:
+def exact_match(pred: str, ans: str) -> bool:
     """
-    Judge if the prediction string matches any of the answers in the list exactly.
+    Judge if the prediction string matches the answer exactly.
 
     Args:
         pred (str): The prediction string
-        ans (List[str]): The list of possible correct answers
+        ans (str): The correct answer
 
     Returns:
-        bool: True if prediction matches any answer, False otherwise
+        bool: True if prediction matches the answer, False otherwise
     """
-
     normalized_pred = pred.strip().lower()
-    for answer in ans:
-        normalized_answer = answer.strip().lower()
-        if normalized_pred == normalized_answer:
-            return True
-    return False
+    normalized_answer = ans.strip().lower()
+    return normalized_pred == normalized_answer
 
 
-def normalize_exact_match(pred: str, ans: List[str]) -> bool:
+def normalize_exact_match(pred: str, ans: str) -> bool:
     """
-    Judge if the prediction string matches any of the answers in the list exactly,
+    Judge if the prediction string matches the answer exactly,
     with additional handling for boolean values, yes/no, and special cases.
 
     Args:
         pred (str): The prediction string
-        ans (List[str]): The list of possible correct answers
+        ans (str): The correct answer
 
     Returns:
-        bool: True if prediction matches any answer, False otherwise
+        bool: True if prediction matches the answer, False otherwise
     """
     # Original exact matching logic
     normalized_pred = pred.strip().lower()
-    original_match = any(normalized_pred == answer.strip().lower() for answer in ans)
+    normalized_answer = ans.strip().lower()
+    original_match = normalized_pred == normalized_answer
 
     # Additional containment logic from judge function
-    containment_match = any(answer.strip().lower() in normalized_pred for answer in ans)
+    containment_match = normalized_answer in normalized_pred
 
     # Handle boolean, yes/no, and None conversions
     pred_processed = normalized_pred
@@ -56,36 +51,31 @@ def normalize_exact_match(pred: str, ans: List[str]) -> bool:
     if "false" in pred_processed:
         pred_processed = pred_processed.replace("false", "0")
 
-    # Process each answer in the list
+    # Process the answer
+    answer_processed = normalized_answer
+
+    # Convert boolean-like strings to numeric equivalents
+    if answer_processed in ["false", "no", "none"]:
+        answer_processed = "0"
+    elif answer_processed in ["true", "yes"]:
+        answer_processed = "1"
+
+    # Handle decimal point zeros
+    if answer_processed.endswith(".0"):
+        answer_processed = answer_processed[:-2]
+
+    # Handle comma-separated lists
     processed_answers = []
-    for answer in ans:
-        answer_processed = answer.strip().lower()
-
-        # Convert boolean-like strings to numeric equivalents
-        if answer_processed in ["false", "no", "none"]:
-            answer_processed = "0"
-        elif answer_processed in ["true", "yes"]:
-            answer_processed = "1"
-
-        # Handle decimal point zeros
-        if answer_processed.endswith(".0"):
-            answer_processed = answer_processed[:-2]
-
-        # Handle comma-separated lists
-        if ", " in answer_processed:
-            processed_answers.extend(
-                [item.strip() for item in answer_processed.split(", ")]
-            )
-        else:
-            processed_answers.append(answer_processed)
+    if ", " in answer_processed:
+        processed_answers = [item.strip() for item in answer_processed.split(", ")]
+    else:
+        processed_answers = [answer_processed]
 
     # Check if all items in the processed answer list are in the prediction
     all_items_match = all(item in pred_processed for item in processed_answers)
 
     # Also check if any single processed answer exactly matches
-    exact_processed_match = any(
-        pred_processed == answer for answer in processed_answers
-    )
+    exact_processed_match = pred_processed == answer_processed
 
     # Return true if any matching approach succeeds
     return (
@@ -159,7 +149,7 @@ def verify_sql_query_executable(
 
 def verify_answer_by_llm(
     pred: str,
-    ans: List[str],
+    ans: str,
     question: str,
     client: LLMClientInterface,
 ) -> bool:
@@ -207,4 +197,4 @@ def verify_answer_by_llm(
     Provide your judgment as 'True' if the answers are semantically equivalent or 'False' if they are not.
     """
     response = client.chat(messages=[{"role": "user", "content": prompt}])
-    return exact_match(response.content, ["yes", "true", "correct"])
+    return exact_match(response.content, "True")
