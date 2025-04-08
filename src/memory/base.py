@@ -73,7 +73,7 @@ class ActionStep(MemoryStep):
         messages = []
         if self.model_input_messages is not None:
             messages.append(
-                Message(role=MessageRole.SYSTEM, content=self.model_input_messages)
+                Message(role=MessageRole.SYSTEM, content=self.model_input_messages)  # type: ignore
             )
         if self.model_output is not None:
             messages.append(

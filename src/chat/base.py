@@ -156,7 +156,7 @@ class LLMClientInterface:
 
     def _prepare_completion_kwargs(
         self,
-        messages: List[ChatMessage],
+        messages: List[Dict[str, str]],
         stop_sequences: Optional[List[str]] = None,
         grammar: Optional[str] = None,
         tools_to_call_from: Optional[List[BaseTool]] = None,
@@ -173,7 +173,7 @@ class LLMClientInterface:
         # Apply role conversion for tool calls
         for message in messages:
             if message["role"] in tool_role_conversions:
-                message["role"] = tool_role_conversions[message["role"]]
+                message["role"] = tool_role_conversions[MessageRole(message["role"])]
 
         # Use self.kwargs as the base configuration
         completion_kwargs = {

@@ -4,15 +4,15 @@
 # Usage: ./scripts/run_evaluate.sh [additional args]
 
 # Set default parameters
-DATASET_PATH="data/test_50.jsonl"
+DATASET_PATH="data/mimic_valid_full.jsonl"
 DATABASE="data/mimic_iii/mimic_iii.db"
-NUM_SAMPLES=-1 # Use -1 for all samples
+NUM_SAMPLES=3 # Use -1 for all samples
 MAX_ITERATIONS=10
 OUTPUT_PATH="results/{agent_type}_{model_id}_{dataset_name}.json"
 AGENT_TYPE="sql_react"
 PROMPT_PATH="src/prompts/react.yaml"
 
-MODEL_IDS=("gpt-4o-mini")
+MODEL_IDS=("gpt-4o")
 
 for MODEL_ID in "${MODEL_IDS[@]}"; do
   # Run the evaluation script

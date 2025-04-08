@@ -7,10 +7,7 @@ from src.agent.base import BaseAgent
 
 # TODO: Refactor this file to use the new agent system
 class AgentFactory:
-    CLASS_MAP: Dict[str, Type[BaseAgent]] = {
-        "sql": BaseAgent,
-        # Add other agent types here
-    }
+    CLASS_MAP: Dict[str, Type[BaseAgent]] = {}
 
     @classmethod
     def load_agent(cls, agent_type: str, **kwargs: Any) -> BaseAgent:
