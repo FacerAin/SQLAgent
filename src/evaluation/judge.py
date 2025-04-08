@@ -75,8 +75,7 @@ def normalize_exact_match(pred: str, ans: str) -> bool:
     all_items_match = all(item in pred_processed for item in processed_answers)
 
     # Also check if any single processed answer exactly matches
-    exact_processed_match = pred_processed == answer_processed
-
+    exact_processed_match = any(pred_processed == item for item in processed_answers)
     # Return true if any matching approach succeeds
     return (
         original_match or containment_match or all_items_match or exact_processed_match
