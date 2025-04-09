@@ -195,7 +195,7 @@ class BaseAgent(ABC):
 
         memory_messages = self.write_memory_to_messages()[1:]
         messages += [
-            {"role": message.role, "content": message.content}  # type: ignore
+            {"role": message["role"], "content": message["content"]}  # type: ignore
             for message in memory_messages
         ]
 
