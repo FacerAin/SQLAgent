@@ -440,7 +440,7 @@ class SampleProcessor:
         if not question:
             raise ValueError("Question is missing in the dataset.")
         if not answer:
-            raise ValueError("Answer is missing in the dataset.")
+            answer = "None"  # To handle cases for unanswerable questions
 
         # Process the question
         agent_answer = context.agent.run(task=question)

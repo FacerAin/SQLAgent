@@ -59,7 +59,11 @@ class BaseTool(ABC):
 
 class FinalAnswerTool(BaseTool):
     name = "final_answer"
-    description = "A tool for providing final answer. Your answer must be the exact value returned by the SQL query without any interpretation. If the query returns 'po', your answer should be 'po', not 'oral' or any interpretation"
+    description = """
+    A tool for providing final answer. Your answer must be the exact value returned by the SQL query without any interpretation.
+    If the query returns 'po', your answer should be 'po', not 'oral' or any interpretation.
+    If you can't find the answer, return 'None'.
+    """
     parameters = {
         "answer": {"type": "string", "description": "The final answer string."}
     }
