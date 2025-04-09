@@ -39,11 +39,16 @@ class ToolReActAgent(BaseAgent):
             log_dir=log_dir,
         )
 
-    def run(self, task: str, max_steps: int = 10, stream: bool = False) -> Any:
+    def run(
+        self, task: str, max_steps: int = 10, stream: bool = False, reset: bool = True
+    ) -> Any:
         self.logger.info(f"Starting agent run with task: {task}")
         self.task = task
         self.system_prompt = self._initialize_system_prompt()
+        if reset:
+            self.memory.reset()
         self.memory.system_prompt = SystemPromptStep(system_prompt=self.system_prompt)
+
         self.memory.steps.append(TaskStep(task=self.task))
         if stream:
             self.logger.info("Running in stream mode")
@@ -170,6 +175,7 @@ class ToolReActAgent(BaseAgent):
             updated_information = str(observation).strip()
             memory_step.observations = updated_information
             self.logger.info(f"Tool execution completed for: {tool_name}")
+            self.logger.info(f"Tool execution results: {observation}")
             return None
 
     def _execute_step(self, task: str, memory_step: ActionStep) -> Any:

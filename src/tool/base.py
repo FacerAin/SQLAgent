@@ -60,17 +60,24 @@ class BaseTool(ABC):
 class FinalAnswerTool(BaseTool):
     name = "final_answer"
     description = """
-    A tool for providing final answer. Your answer must be the exact value returned by the SQL query without any interpretation.
-    If the query returns 'po', your answer should be 'po', not 'oral' or any interpretation.
-    If you can't find the answer, return 'None'.
+    A tool for providing the final answer. Return ONLY the exact value from the SQL query without interpretation.
+    If the query returns 'po', answer 'po', not 'oral'. If unanswerable, respond with 'Unanswerable'.
     """
     parameters = {
         "answer": {"type": "string", "description": "The final answer string."}
     }
     output_type = str
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self, use_retrieval_knowledge_only: bool = True, *args: Any, **kwargs: Any
+    ) -> None:
         super().__init__(*args, **kwargs)
+        if use_retrieval_knowledge_only:
+            self.description += textwrap.dedent(
+                """
+                Use ONLY information retrieved from the database, not your background knowledge.
+                """
+            )
 
     def forward(self, answer: str) -> Any:
         return str(answer)

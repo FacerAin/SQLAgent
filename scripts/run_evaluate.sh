@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Combined evaluation script with flexible options
+# Combined evaluation script with flexible options for multiple models and agent types
 # Usage: ./scripts/run_evaluate.sh [--skip-generation] [--dataset mimic|eicu] [additional args]
 
 # Set default parameters
+PREFIX="04-09"
 DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
 NUM_SAMPLES=-1 # Use -1 for all samples
 MAX_ITERATIONS=10
-OUTPUT_PATH="results/{agent_type}_{model_id}_{dataset_name}.json"
-AGENT_TYPE="python_react"
+OUTPUT_PATH="results/${PREFIX}_{agent_type}_{model_id}_{dataset_name}.json"
 PROMPT_PATH="src/prompts/react.yaml"
 
 # Parse our custom arguments first
@@ -47,62 +47,73 @@ else
 fi
 
 # Models to evaluate
-MODEL_IDS=("gpt-4o-mini" "gpt-4o")
+MODEL_IDS=("gpt-4o" "gpt-4o-mini")
 
-for MODEL_ID in "${MODEL_IDS[@]}"; do
-  # Extract dataset name from the dataset path for constructing file paths
-  DATASET_NAME=$(basename $DATASET_PATH .jsonl)
+# Agent types to evaluate
+AGENT_TYPES=("python_react" "sql_react")
 
-  # Add dataset type to results path for better organization
-  RESULTS_PATH="results/${AGENT_TYPE}_${MODEL_ID}_${DATASET_TYPE}_${DATASET_NAME}.json"
+# Outer loop for agent types
+for AGENT_TYPE in "${AGENT_TYPES[@]}"; do
+  echo "Processing agent type: $AGENT_TYPE"
 
-  echo "Processing model: $MODEL_ID"
+  # Inner loop for model IDs
+  for MODEL_ID in "${MODEL_IDS[@]}"; do
+    # Extract dataset name from the dataset path for constructing file paths
+    DATASET_NAME=$(basename $DATASET_PATH .jsonl)
 
-  # If SKIP_GENERATION is true and results file exists, skip generation
-  if [[ "$SKIP_GENERATION" = true ]] && [[ -f "$RESULTS_PATH" ]]; then
-    echo "Skipping generation for $MODEL_ID, using existing results at: $RESULTS_PATH"
+    # Add dataset type and agent type to results path for better organization
+    RESULTS_PATH="results/${AGENT_TYPE}_${MODEL_ID}_${DATASET_TYPE}_${DATASET_NAME}.json"
 
-    # Run evaluation with --results_path to skip generation
-    python -m src.evaluate \
-      --model_id $MODEL_ID \
-      --dataset_path $DATASET_PATH \
-      --database $DATABASE \
-      --num_samples $NUM_SAMPLES \
-      --max_iterations $MAX_ITERATIONS \
-      --output_path $OUTPUT_PATH \
-      --agent_type $AGENT_TYPE \
-      --prompt_path $PROMPT_PATH \
-      --results_path "$RESULTS_PATH" \
-      --save_result \
-      --log_to_file \
-      --use_few_shot \
-      --verbose \
-      "$@"
-  else
-    # If SKIP_GENERATION is false or results file does not exist, run generation
-    if [[ "$SKIP_GENERATION" = true ]]; then
-      echo "Results file not found for $MODEL_ID, running full generation despite --skip-generation flag"
+    echo "Processing model: $MODEL_ID with agent type: $AGENT_TYPE"
+
+    # If SKIP_GENERATION is true and results file exists, skip generation
+    if [[ "$SKIP_GENERATION" = true ]] && [[ -f "$RESULTS_PATH" ]]; then
+      echo "Skipping generation for $MODEL_ID with $AGENT_TYPE, using existing results at: $RESULTS_PATH"
+
+      # Run evaluation with --results_path to skip generation
+      python -m src.evaluate \
+        --model_id $MODEL_ID \
+        --dataset_path $DATASET_PATH \
+        --database $DATABASE \
+        --num_samples $NUM_SAMPLES \
+        --max_iterations $MAX_ITERATIONS \
+        --output_path $OUTPUT_PATH \
+        --agent_type $AGENT_TYPE \
+        --prompt_path $PROMPT_PATH \
+        --results_path "$RESULTS_PATH" \
+        --save_result \
+        --log_to_file \
+        --use_few_shot \
+        --verbose \
+        "$@"
     else
-      echo "Running full generation for $MODEL_ID"
+      # If SKIP_GENERATION is false or results file does not exist, run generation
+      if [[ "$SKIP_GENERATION" = true ]]; then
+        echo "Results file not found for $MODEL_ID with $AGENT_TYPE, running full generation despite --skip-generation flag"
+      else
+        echo "Running full generation for $MODEL_ID with $AGENT_TYPE"
+      fi
+
+      # Run the full evaluation script
+      python -m src.evaluate \
+        --model_id $MODEL_ID \
+        --dataset_path $DATASET_PATH \
+        --database $DATABASE \
+        --num_samples $NUM_SAMPLES \
+        --max_iterations $MAX_ITERATIONS \
+        --output_path $OUTPUT_PATH \
+        --agent_type $AGENT_TYPE \
+        --prompt_path $PROMPT_PATH \
+        --save_result \
+        --log_to_file \
+        --use_few_shot \
+        --verbose \
+        --agent_verbose \
+        "$@"
     fi
 
-    # Run the full evaluation script
-    python -m src.evaluate \
-      --model_id $MODEL_ID \
-      --dataset_path $DATASET_PATH \
-      --database $DATABASE \
-      --num_samples $NUM_SAMPLES \
-      --max_iterations $MAX_ITERATIONS \
-      --output_path $OUTPUT_PATH \
-      --agent_type $AGENT_TYPE \
-      --prompt_path $PROMPT_PATH \
-      --save_result \
-      --log_to_file \
-      --use_few_shot \
-      --verbose \
-      --agent_verbose \
-      "$@"
-  fi
-
-  echo "Evaluation completed for model: $MODEL_ID"
+    echo "Evaluation completed for model: $MODEL_ID with agent type: $AGENT_TYPE"
+  done
 done
+
+echo "All evaluations completed!"
