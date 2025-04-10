@@ -137,6 +137,12 @@ planning:
     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
     After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
 
+    Tip: You may need to access external databases, where table information or schemas are not immediately available. It's recommended to investigate these first through exploratory queries such as:
+    - `SELECT name FROM sqlite_master WHERE type='table';` (to list all tables in SQLite)
+    - `PRAGMA table_info(TABLE_NAME);` (to get column information for a specific table)
+    - `SELECT * FROM TABLE_NAME LIMIT 5;` (to peek at sample data)
+    - `SELECT COUNT(*) FROM TABLE_NAME;` (to get row counts)
+
     Here is your task:
 
     Task:

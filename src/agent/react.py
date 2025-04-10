@@ -39,24 +39,24 @@ class ToolReActAgent(BaseAgent):
             log_dir=log_dir,
         )
 
-    def run(
-        self, task: str, max_steps: int = 10, stream: bool = False, reset: bool = True
-    ) -> Any:
+    def run(self, task: str, stream: bool = False, reset: bool = True) -> Any:
         self.logger.info(f"Starting agent run with task: {task}")
         self.task = task
         self.system_prompt = self._initialize_system_prompt()
         if reset:
             self.memory.reset()
+            self.token_usages = []
+            self.client.reset_token_usage()
         self.memory.system_prompt = SystemPromptStep(system_prompt=self.system_prompt)
 
         self.memory.steps.append(TaskStep(task=self.task))
         if stream:
             self.logger.info("Running in stream mode")
-            return self._run(task=task, max_steps=max_steps)
+            return self._run(task=task, max_steps=self.max_steps)
 
         # Get the last step from the generator and check if it's a FinalAnswerStep
-        self.logger.info(f"Running with max_steps: {max_steps}")
-        last_step = deque(self._run(task=task, max_steps=max_steps), maxlen=1)[0]
+        self.logger.info(f"Running with max_steps: {self.max_steps}")
+        last_step = deque(self._run(task=task, max_steps=self.max_steps), maxlen=1)[0]
         if isinstance(last_step, FinalAnswerStep):
             self.logger.info("Run completed with final answer")
             return str(last_step.final_answer)
@@ -115,10 +115,11 @@ class ToolReActAgent(BaseAgent):
         self.logger.info("[Action progress] Requesting response from model")
         try:
             model_message = self.client.chat(
-                memory_messages,
+                memory_messages,  # type: ignore
                 tools_to_call_from=list(self.tools.values()),
                 stop_sequences=["Observation:", "Calling tools:"],
             )
+            self.token_usages.append(self.client.get_token_usage())
             memory_step.model_output_message = model_message
             self.logger.debug(f"Model output: {model_message.content}")
         except Exception as e:

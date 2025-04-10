@@ -3,9 +3,8 @@ from typing import Any, Dict, List, Optional
 
 from openai import Client
 
-from src.chat.base import ChatMessage, LLMClientInterface
+from src.chat.base import ChatMessage, LLMClientInterface, TokenUsage
 from src.tool.base import BaseTool
-from src.utils.logger import init_token_logger
 
 
 class OpenAIClient(LLMClientInterface):
@@ -15,26 +14,12 @@ class OpenAIClient(LLMClientInterface):
         self,
         model_id: str,
         api_key: Optional[str] = None,
-        track_usage: bool = True,
-        log_to_file: bool = False,
-        log_dir: str = "logs",
+        **kwargs: Any,
     ):
         if not api_key:
             api_key = os.getenv("OPENAI_API_KEY")
-        super().__init__(model_id=model_id, api_key=api_key)
+        super().__init__(model_id=model_id, api_key=api_key, **kwargs)
         self.client = Client(api_key=api_key)
-        self.track_usage = track_usage
-        self.token_usage = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
-
-        # Initialize token usage logger if tracking is enabled
-        if self.track_usage:
-            self.token_logger = init_token_logger(
-                log_to_file=log_to_file, log_dir=log_dir
-            )
 
     def chat(
         self,
@@ -61,10 +46,13 @@ class OpenAIClient(LLMClientInterface):
             total_tokens = response.usage.total_tokens
 
             # Update cumulative token usage
-            self.token_usage["prompt_tokens"] += prompt_tokens
-            self.token_usage["completion_tokens"] += completion_tokens
-            self.token_usage["total_tokens"] += total_tokens
-
+            self.token_usages.append(
+                TokenUsage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                )
+            )
             # Log token usage
             self.token_logger.info(
                 f"Token Usage - Model: {self.model_id}, Prompt: {prompt_tokens}, "
@@ -80,14 +68,6 @@ class OpenAIClient(LLMClientInterface):
             message=response_message, tools_to_call_from=tools_to_call_from
         )
 
-    def get_token_usage(self) -> Dict[str, int]:
-        """Get the cumulative token usage statistics.
-
-        Returns:
-            Dictionary with token usage statistics
-        """
-        return self.token_usage.copy()
-
 
 class OpenAIReasoningClient(LLMClientInterface):
     """Client for OpenAI Reasoning API like o1, o3-mini"""
@@ -96,26 +76,12 @@ class OpenAIReasoningClient(LLMClientInterface):
         self,
         model_id: str,
         api_key: Optional[str] = None,
-        track_usage: bool = True,
-        log_to_file: bool = False,
-        log_dir: str = "logs",
+        **kwargs: Any,
     ):
         if not api_key:
             api_key = os.getenv("OPENAI_API_KEY")
-        super().__init__(model_id=model_id, api_key=api_key)
+        super().__init__(model_id=model_id, api_key=api_key, **kwargs)
         self.client = Client(api_key=api_key)
-        self.track_usage = track_usage
-        self.token_usage = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
-
-        # Initialize token usage logger if tracking is enabled
-        if self.track_usage:
-            self.token_logger = init_token_logger(
-                log_to_file=log_to_file, log_dir=log_dir
-            )
 
     def chat(
         self,
@@ -145,9 +111,13 @@ class OpenAIReasoningClient(LLMClientInterface):
             total_tokens = response.usage.total_tokens
 
             # Update cumulative token usage
-            self.token_usage["prompt_tokens"] += prompt_tokens
-            self.token_usage["completion_tokens"] += completion_tokens
-            self.token_usage["total_tokens"] += total_tokens
+            self.token_usages.append(
+                TokenUsage(
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
+                )
+            )
 
             # Log token usage
             self.token_logger.info(
@@ -163,11 +133,3 @@ class OpenAIReasoningClient(LLMClientInterface):
         return self.post_process_message(
             message=response_message, tools_to_call_from=tools_to_call_from
         )
-
-    def get_token_usage(self) -> Dict[str, int]:
-        """Get the cumulative token usage statistics.
-
-        Returns:
-            Dictionary with token usage statistics
-        """
-        return self.token_usage.copy()

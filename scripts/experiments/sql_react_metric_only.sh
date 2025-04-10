@@ -7,7 +7,7 @@
 DATASET_PATH="data/test_50.jsonl"
 DATABASE="data/mimic_iii/mimic_iii.db"
 NUM_SAMPLES=-1 # Use -1 for all samples
-MAX_ITERATIONS=10
+MAX_ITERATIONS=20
 OUTPUT_PATH="results/{agent_type}_{model_id}_{dataset_name}.json"
 AGENT_TYPE="sql_react"
 PROMPT_PATH="src/prompts/react.yaml"

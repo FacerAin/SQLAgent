@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from src.tool.base import BaseTool, get_tool_json_schema
 from src.utils.load import parse_json_blob
+from src.utils.logger import init_token_logger
 
 
 class MessageRole(str, Enum):
@@ -43,6 +44,23 @@ class ChatMessageToolCall:
     function: ToolCallDefinition
     id: str
     type: str
+
+
+@dataclass
+class TokenUsage:
+    """Container for token usage statistics."""
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    def to_dict(self) -> Dict[str, int]:
+        """Convert to dictionary for serialization."""
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+        }
 
 
 def get_tool_call_from_text(
@@ -118,6 +136,9 @@ class LLMClientInterface:
         api_key: Optional[str] = None,
         tool_name_key: str = "name",
         tool_arguments_key: str = "arguments",
+        track_usage: bool = True,
+        log_to_file: bool = False,
+        log_dir: str = "logs",
         **kwargs: Any,
     ):
         self.model_id = model_id
@@ -125,6 +146,16 @@ class LLMClientInterface:
         self.tool_name_key = tool_name_key
         self.tool_arguments_key = tool_arguments_key
         self.kwargs = kwargs
+        self.token_usages: List = []
+        self.track_usage = track_usage
+        self.log_to_file = log_to_file
+        self.log_dir = log_dir
+        self.token_logger = None
+
+        if self.track_usage:
+            self.token_logger = init_token_logger(
+                log_to_file=self.log_to_file, log_dir=self.log_dir
+            )
 
     @abstractmethod
     def chat(
@@ -146,13 +177,31 @@ class LLMClientInterface:
         """
         pass
 
-    def get_token_usage(self) -> Dict[str, int]:
+    def get_token_usage(self) -> List[Dict[str, int]]:
         """Get the cumulative token usage statistics.
 
         Returns:
-            Dictionary with token usage statistics (if implemented)
+            Dictionary with token usage statistics
         """
-        return {}
+        token_usage_dicts = [usage.to_dict() for usage in self.token_usages]
+        return token_usage_dicts
+
+    def get_cummulative_token_usage(self) -> Dict[str, int]:
+        """Get the cumulative token usage statistics.
+
+        Returns:
+            Dictionary with token usage statistics
+        """
+        cumulative_usage = TokenUsage()
+        for usage in self.token_usages:
+            cumulative_usage.prompt_tokens += usage.prompt_tokens
+            cumulative_usage.completion_tokens += usage.completion_tokens
+            cumulative_usage.total_tokens += usage.total_tokens
+        return cumulative_usage.to_dict()
+
+    def reset_token_usage(self) -> None:
+        """Reset the token usage statistics."""
+        self.token_usages = []
 
     def _prepare_completion_kwargs(
         self,

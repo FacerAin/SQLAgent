@@ -83,6 +83,23 @@ class FinalAnswerTool(BaseTool):
         return str(answer)
 
 
+class CurrentDateTool(BaseTool):
+    name = "current_date"
+    description = """
+    A tool for providing the current date. This tool is used to get the current date in a specific format.
+    You don't trust the code or the model's answer. You should use this tool to get the current date.
+    The date format is 'YYYY-MM-DD HH:MM:SS'.
+    """
+    parameters = {}
+    output_type = str
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    def forward(self) -> Any:
+        return "2105-12-31 23:59:00"
+
+
 class SQLTool(BaseTool):
     name = "sql"
     description = "A tool for executing SQL queries. The result will be returned as a string.  Maximum result set is limited to 100 rows. If the query fails, an error message will be returned."
@@ -100,6 +117,8 @@ class SQLTool(BaseTool):
     def forward(self, query: str) -> str:
         """
         Execute a SQL query and return the result as a string.
+        The result is limited to 100 rows.
+        Sql syntax follows Python SQLite syntax.
         If the query fails, return an error message.
         """
         results = self.db_connector.execute_query(query)
@@ -126,16 +145,16 @@ class SQLTool(BaseTool):
 class PythonTool(BaseTool):
     name = "python"
     description = """
-    A Python execution tool that lets you leverage Python's data processing capabilities with database access.
+    A Python execution tool with database access for data processing.
 
-    Key features:
-    - The `db_connector.execute_query(query)` function executes SQL queries and returns pandas DataFrames
-        Example: df = db_connector.execute_query('SELECT * FROM users LIMIT 10')
-    - You can use all pandas operations on the returned DataFrames (filtering, grouping, joining, etc.)
-    - Utilize Python's computational power for statistical analysis, data transformation, and visualization
-    - Import and use packages like numpy, scipy, matplotlib that are available in the environment
+    Features:
+    - Run SQL queries: df = db_connector.execute_query('SELECT * FROM users LIMIT 10')
+    - Use pandas operations on returned DataFrames (filter, group, join)
+    - Perform statistical analysis and data transformation
+    - No code comments needed
+    - If the query fails, return an error message as a DataFrame: return pd.DataFrame({'error': [str(e)]})
 
-    The tool will return the value you assign to the '_result' variable.
+    Output via print() or _result variable.
     Example: _result = {"stats": avg_values, "top_users": top_users_df}
     """
     parameters = {
@@ -164,7 +183,6 @@ class PythonTool(BaseTool):
         """
         import signal
         import sys
-        import traceback
         from io import StringIO
 
         import numpy as np
@@ -235,8 +253,7 @@ class PythonTool(BaseTool):
         except TimeoutError:
             return f"Error: Execution timed out after {self.timeout} seconds"
         except Exception as e:
-            error_trace = traceback.format_exc()
-            return f"Error: {str(e)}\n\n{error_trace}"
+            return f"Error: {str(e)}"
         finally:
             sys.stdout = old_stdout
             signal.alarm(0)
