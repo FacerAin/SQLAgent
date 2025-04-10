@@ -4,15 +4,15 @@
 # Usage: ./scripts/run_evaluate.sh [--skip-generation] [--dataset mimic|eicu] [additional args]
 
 # Set default parameters
-PREFIX="04-10-db"
+PREFIX="04-10-legacy-db"
 DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
-NUM_SAMPLES=50 # Use -1 for all samples
+NUM_SAMPLES=10 # Use -1 for all samples
 MAX_ITERATIONS=20
 PROMPT_PATH="src/prompts/react_db.yaml"
 
 # Models to evaluate
-MODEL_IDS=("gpt-4o" "gpt-4o-mini")
+MODEL_IDS=("gpt-4o")
 # MODEL_IDS=("gpt-4o")
 
 # Agent types to evaluate
@@ -40,13 +40,13 @@ done
 
 # Set paths based on dataset type
 if [[ "$DATASET_TYPE" == "mimic" ]]; then
-  DATASET_PATH="data/evaluation/mimic_100.jsonl"
+  DATASET_PATH="data/evaluation/mimic_legacy_50.jsonl"
   DATABASE="data/mimic_iii/mimic_iii.db"
   echo "Using MIMIC dataset"
-elif [[ "$DATASET_TYPE" == "eicu" ]]; then
-  DATASET_PATH="data/evaluation/eicu_100.jsonl"
-  DATABASE="data/eicu/eicu_iii.db"
-  echo "Using eICU dataset"
+# elif [[ "$DATASET_TYPE" == "eicu" ]]; then
+#   DATASET_PATH="data/evaluation/eicu_100.jsonl"
+#   DATABASE="data/eicu/eicu_iii.db"
+#   echo "Using eICU dataset"
 else
   echo "Invalid dataset type: $DATASET_TYPE. Using MIMIC as default."
   DATASET_PATH="data/evaluation/mimic_100.jsonl"
