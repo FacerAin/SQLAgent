@@ -48,6 +48,7 @@ class BaseAgent(ABC):
         self.input_messages = None
         self.state: Dict = {}
         self.step_num = 1
+        self.token_usages: List = []
 
     def _substitute_state_variables(
         self, arguments: Union[Dict[str, str], str]
@@ -86,7 +87,6 @@ class BaseAgent(ABC):
 
         try:
             # Call tool with appropriate arguments
-            start_time = time.time()
             result = None
             if isinstance(arguments, dict):
                 result = tool(**arguments)
@@ -95,7 +95,6 @@ class BaseAgent(ABC):
             else:
                 raise TypeError(f"Unsupported arguments type: {type(arguments)}")
 
-            execution_time = time.time() - start_time
             return result
 
         except TypeError as e:
@@ -144,6 +143,7 @@ class BaseAgent(ABC):
 
         try:
             plan_message = self.client.chat(input_messages_dict)
+            self.token_usages.append(self.client.get_token_usage())
             self.logger.debug(f"Plan message received: {plan_message.content[:100]}...")
             plan = textwrap.dedent(
                 f"""Here are the facts I know and the plan of action that I will follow to solve the task:\n```\n{plan_message}\n```"""
@@ -174,6 +174,10 @@ class BaseAgent(ABC):
         self.logger.debug(
             f"Finalized step {memory_step.step_number} (duration: {memory_step.duration:.2f}s)"
         )
+
+    def get_token_usages(self) -> List[Dict[str, int]]:
+        """Get the token usages for each step."""
+        return self.token_usages
 
     def write_memory_to_messages(
         self,
@@ -210,6 +214,7 @@ class BaseAgent(ABC):
         ]
         try:
             final_message = self.client.chat(messages)
+            self.token_usages.append(self.client.get_token_usage())
             self.logger.debug(f"Final answer: {final_message.content[:100]}...")
             return final_message.content
         except Exception as e:
@@ -232,7 +237,7 @@ class BaseAgent(ABC):
         return final_answer
 
     @abstractmethod
-    def run(self, task: str, max_steps: int = 10, stream: bool = False) -> Any:
+    def run(self, task: str, stream: bool = False) -> Any:
         pass
 
     @abstractmethod
