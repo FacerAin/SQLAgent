@@ -60,8 +60,8 @@ class BaseTool(ABC):
 class FinalAnswerTool(BaseTool):
     name = "final_answer"
     description = """
-    A tool for providing the final answer. Return ONLY the exact value from the SQL query without interpretation.
-    If the query returns 'po', answer 'po', not 'oral'. If unanswerable, respond with 'Unanswerable'.
+    A tool for providing the final answer. Answers are typically concise (examples: po / True / 7 / 12.12 / 2103-12-23 07:20:00 / ceftriaxone, azithromycin, ciprofloxacin).
+    Make sure to use the terms exactly as they appear in the query results. If unanswerable, respond with 'Unanswerable'.
     """
     parameters = {
         "answer": {"type": "string", "description": "The final answer string."}
