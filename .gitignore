@@ -2,6 +2,7 @@ data/
 results/
 *.DS_Store
 notebooks/draft.ipynb
+logs/
 
 
 # Byte-compiled / optimized / DLL files
