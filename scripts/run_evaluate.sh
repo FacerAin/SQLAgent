@@ -7,12 +7,12 @@
 PREFIX="04-10-db"
 DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
-NUM_SAMPLES=50 # Use -1 for all samples
+NUM_SAMPLES=-1 # Use -1 for all samples
 MAX_ITERATIONS=20
 PROMPT_PATH="src/prompts/react_db.yaml"
 
 # Models to evaluate
-MODEL_IDS=("gpt-4o" "gpt-4o-mini")
+MODEL_IDS=("gpt-4o-mini")
 # MODEL_IDS=("gpt-4o")
 
 # Agent types to evaluate
