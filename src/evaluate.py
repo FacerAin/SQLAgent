@@ -302,7 +302,7 @@ class SampleProcessor:
 
         if not question:
             raise ValueError("Question is missing in the dataset.")
-        if not answer:
+        if answer == "None":
             answer = "Unanswerable"  # Handle unanswerable questions
 
         # Process the question
