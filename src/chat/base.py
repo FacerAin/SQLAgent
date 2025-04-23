@@ -256,7 +256,7 @@ class LLMClientInterface:
         self, message: ChatMessage, tools_to_call_from: Optional[List[BaseTool]]
     ) -> ChatMessage:
         message.role = MessageRole.ASSISTANT  # Overwrite role if needed
-        if tools_to_call_from:
+        if tools_to_call_from and message.tool_calls:
             if not message.tool_calls:
                 message.tool_calls = [
                     get_tool_call_from_text(

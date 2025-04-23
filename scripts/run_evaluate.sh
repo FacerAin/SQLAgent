@@ -4,19 +4,20 @@
 # Usage: ./scripts/run_evaluate.sh [--skip-generation] [--dataset mimic|eicu] [additional args]
 
 # Set default parameters
-PREFIX="04-10-db"
+PREFIX="v3"
 DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
 NUM_SAMPLES=-1 # Use -1 for all samples
 MAX_ITERATIONS=20
-PROMPT_PATH="src/prompts/react_db.yaml"
+PROMPT_PATH="src/prompts/react_v3.yaml"
+PLANNING_INTERVAL=5
 
 # Models to evaluate
-MODEL_IDS=("gpt-4o-mini")
+MODEL_IDS=("gpt-4o")
 # MODEL_IDS=("gpt-4o")
 
 # Agent types to evaluate
-AGENT_TYPES=("sql_react" "python_react")
+AGENT_TYPES=("sql_react")
 # AGENT_TYPES=("python_react")
 
 # Parse our custom arguments first
@@ -79,6 +80,7 @@ for AGENT_TYPE in "${AGENT_TYPES[@]}"; do
       --output_path $OUTPUT_PATH \
       --agent_type $AGENT_TYPE \
       --prompt_path $PROMPT_PATH \
+      --planning_interval $PLANNING_INTERVAL \
       --save_result \
       --log_to_file \
       --use_few_shot \

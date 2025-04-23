@@ -140,6 +140,7 @@ class ResultManager:
                 "dataset_path": self.args.dataset_path,
                 "num_samples": self.args.num_samples,
                 "timestamp": datetime.now().isoformat(),
+                "prompt_path": self.args.prompt_path,
             },
         )
 
@@ -259,6 +260,12 @@ def parse_arguments() -> argparse.Namespace:
         type=str,
         default="logs",
         help="Directory for log files",
+    )
+    parser.add_argument(
+        "--planning_interval",
+        type=int,
+        default=20,
+        help="Interval for planning steps in the agent",
     )
 
     args = parser.parse_args()
