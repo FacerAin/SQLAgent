@@ -163,6 +163,7 @@ def parse_json_blob(json_blob: str) -> Tuple[Dict[str, str], str]:
         json_data = json.loads(json_data, strict=False)
         return json_data, json_blob[:first_accolade_index]  # type: ignore
     except IndexError:
+        logger.error("IndexError: %s", json_blob)
         raise ValueError("The JSON blob you used is invalid")
     except json.JSONDecodeError as e:
         place = e.pos

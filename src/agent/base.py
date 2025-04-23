@@ -27,6 +27,7 @@ class BaseAgent(ABC):
         logger: Optional[logging.Logger] = None,
         log_to_file: bool = False,
         log_dir: str = "logs",
+        planning_interval: Optional[int] = None,
     ):
         self.max_steps = max_steps
         self.client = client
@@ -49,6 +50,7 @@ class BaseAgent(ABC):
         self.state: Dict = {}
         self.step_num = 1
         self.token_usages: List = []
+        self.planning_interval = planning_interval
 
     def _substitute_state_variables(
         self, arguments: Union[Dict[str, str], str]
@@ -127,29 +129,75 @@ class BaseAgent(ABC):
         self.logger.debug("System prompt initialized")
         return system_prompt
 
-    def _create_planning_step(self, task: str) -> PlanningStep:
-        input_messages_dict = [
-            {
-                "role": MessageRole.USER,
-                "content": populate_template(
-                    self.prompt_templates["planning"]["initial_plan"],
-                    variables={"task": task, "tools": self.tools},
-                ),
-            }
-        ]
-
-        # Convert dictionary messages to Message objects
-        input_messages = [Message(role=msg["role"], content=msg["content"]) for msg in input_messages_dict]  # type: ignore
-
+    def _create_planning_step(self, task: str, step: int) -> PlanningStep:
         try:
-            plan_message = self.client.chat(input_messages_dict)
-            self.token_usages.append(self.client.get_token_usage())
-            self.logger.debug(f"Plan message received: {plan_message.content[:100]}...")
-            plan = textwrap.dedent(
-                f"""Here are the facts I know and the plan of action that I will follow to solve the task:\n```\n{plan_message}\n```"""
-            )
-            self.logger.debug("Planning step created successfully")
-            self.logger.debug(f"Plan: {plan}")
+            if step == 1:
+                input_messages_dict = [
+                    {
+                        "role": MessageRole.USER,
+                        "content": populate_template(
+                            self.prompt_templates["planning"]["initial_plan"],
+                            variables={"task": task, "tools": self.tools},
+                        ),
+                    }
+                ]
+                # Convert dictionary messages to Message objects
+                input_messages = [Message(role=msg["role"], content=msg["content"]) for msg in input_messages_dict]  # type: ignore
+
+                plan_message = self.client.chat(input_messages_dict)
+                self.token_usages.append(self.client.get_token_usage())
+                self.logger.debug(
+                    f"Plan message received: {plan_message.content[:100]}..."
+                )
+                plan = textwrap.dedent(
+                    f"""Here are the facts I know and the plan of action that I will follow to solve the task:\n```\n{plan_message}\n```"""
+                )
+                self.logger.debug("Planning step created successfully")
+                self.logger.debug(f"Plan: {plan}")
+
+            else:
+                memory_messages = self.write_memory_to_messages()
+                plan_update_pre = {
+                    "role": MessageRole.SYSTEM,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": populate_template(
+                                self.prompt_templates["planning"][
+                                    "update_plan_pre_messages"
+                                ],
+                                variables={"task": task},
+                            ),
+                        }
+                    ],
+                }
+                plan_update_post = {
+                    "role": MessageRole.USER,
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": populate_template(
+                                self.prompt_templates["planning"][
+                                    "update_plan_post_messages"
+                                ],
+                                variables={
+                                    "task": task,
+                                    "tools": self.tools,
+                                    "remaining_steps": (self.max_steps - step),
+                                },
+                            ),
+                        }
+                    ],
+                }
+                input_messages = (
+                    [plan_update_pre] + memory_messages + [plan_update_post]
+                )
+                plan_message = self.client.chat(
+                    input_messages, stop_sequences=["<end_plan>"]
+                )
+                plan = textwrap.dedent(
+                    f"""I still need to solve the task I was given:\n```\n{self.task}\n```\n\nHere are the facts I know and my new/updated plan of action to solve the task:\n```\n{plan_message.content}\n```"""
+                )
             return PlanningStep(
                 model_input_messages=input_messages,
                 plan=plan,

@@ -64,7 +64,11 @@ class FinalAnswerTool(BaseTool):
     Make sure to use the terms exactly as they appear in the query results. If unanswerable, respond with 'Unanswerable'.
     """
     parameters = {
-        "answer": {"type": "string", "description": "The final answer string."}
+        "answer": {"type": "string", "description": "The final answer string."},
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for choosing this action and what you expect to accomplish with it.",
+        },
     }
     output_type = str
 
@@ -90,13 +94,18 @@ class CurrentDateTool(BaseTool):
     You don't trust the code or the model's answer. You should use this tool to get the current date.
     The date format is 'YYYY-MM-DD HH:MM:SS'.
     """
-    parameters = {}
+    parameters = {
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for choosing this action and what you expect to accomplish with it.",
+        }
+    }
     output_type = str
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
 
-    def forward(self) -> Any:
+    def forward(self, **kwargs) -> Any:
         return "2105-12-31 23:59:00"
 
 
@@ -104,7 +113,14 @@ class SQLTool(BaseTool):
     name = "sql"
     description = "A tool for executing SQL queries. The result will be returned as a string.  Maximum result set is limited to 100 rows. If the query fails, an error message will be returned."
     parameters = {
-        "query": {"type": "string", "description": "The SQL query to execute."}
+        "query": {
+            "type": "string",
+            "description": "The SQL query to execute.",
+        },
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for choosing this action and what you expect to accomplish with it.",
+        },
     }
     output_type = str
 
@@ -114,7 +130,7 @@ class SQLTool(BaseTool):
         super().__init__(*args, **kwargs)
         self.db_connector = db_connector
 
-    def forward(self, query: str) -> str:
+    def forward(self, query: str, **kwargs) -> str:
         """
         Execute a SQL query and return the result as a string.
         The result is limited to 100 rows.
@@ -161,7 +177,11 @@ class PythonTool(BaseTool):
         "code": {
             "type": "string",
             "description": "Python code to execute. Assign to '_result' to return values.",
-        }
+        },
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for choosing this action and what you expect to accomplish with it.",
+        },
     }
     output_type = str
 
@@ -176,7 +196,7 @@ class PythonTool(BaseTool):
         self.db_connector = db_connector
         self.timeout = timeout
 
-    def forward(self, code: str) -> str:  # noqa: C901
+    def forward(self, code: str, **kwargs) -> str:  # noqa: C901
         """
         Execute Python code and return the value assigned to _result.
         Handles SQLite thread limitations.

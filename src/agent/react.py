@@ -28,6 +28,7 @@ class ToolReActAgent(BaseAgent):
         logger: Optional[logging.Logger] = None,
         log_to_file: bool = False,
         log_dir: str = "logs",
+        planning_interval=Optional[int],
     ) -> None:
         super().__init__(
             client=client,
@@ -37,6 +38,7 @@ class ToolReActAgent(BaseAgent):
             logger=logger,
             log_to_file=log_to_file,
             log_dir=log_dir,
+            planning_interval=planning_interval,
         )
 
     def run(self, task: str, stream: bool = False, reset: bool = True) -> Any:
@@ -48,7 +50,6 @@ class ToolReActAgent(BaseAgent):
             self.token_usages = []
             self.client.reset_token_usage()
         self.memory.system_prompt = SystemPromptStep(system_prompt=self.system_prompt)
-
         self.memory.steps.append(TaskStep(task=self.task))
         if stream:
             self.logger.info("Running in stream mode")
@@ -79,8 +80,12 @@ class ToolReActAgent(BaseAgent):
         while self.step_num <= max_steps and final_answer is None:
             start_time = time.time()
             self.logger.info(f"Executing step {self.step_num}/{max_steps}")
-            if self.step_num == 1:
-                planning_step = self._create_planning_step(task)
+            if self.planning_interval is not None and (
+                self.step_num == 1 or (self.step_num - 1) % self.planning_interval == 0
+            ):
+                planning_step = self._create_planning_step(
+                    task=task, step=self.step_num
+                )
                 self.memory.steps.append(planning_step)
                 yield planning_step
             action_step = self._create_action_step(start_time)
@@ -121,7 +126,9 @@ class ToolReActAgent(BaseAgent):
             )
             self.token_usages.append(self.client.get_token_usage())
             memory_step.model_output_message = model_message
-            self.logger.debug(f"Model output: {model_message.content}")
+            if model_message.content:
+                memory_step.model_output = str(f"{model_message.content}")
+            self.logger.info(f"Model output: {model_message.content}")
         except Exception as e:
             self.logger.error(f"Error while generating model message: {e}")
             self.logger.info("[Action progress] Failed to get response from model")
@@ -132,11 +139,12 @@ class ToolReActAgent(BaseAgent):
             self.logger.info(
                 "[Action progress] Model response did not include any tool calls"
             )
-            raise AgentError("Model did not call any tools.")
+            return None
 
         tool_call = model_message.tool_calls[0]
         tool_name, tool_call_id = tool_call.function.name, tool_call.id
         tool_arguments = tool_call.function.arguments
+
         self.logger.info(f"Model called tool: {tool_name}")
         self.logger.info(f"[Action progress] Model selected tool: {tool_name}")
 
@@ -161,7 +169,6 @@ class ToolReActAgent(BaseAgent):
                 final_answer = self.state[answer]
             else:
                 final_answer = answer
-
             memory_step.action_output = final_answer
             self.logger.info("Final answer generated")
             self.logger.info("[Action progress] Final answer generated successfully")

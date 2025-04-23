@@ -132,6 +132,7 @@ class EvaluationContext:
             log_to_file=self.args.log_to_file,
             log_dir=self.args.log_dir,
             max_steps=self.args.max_iterations,
+            planning_interval=self.args.planning_interval,
         )
 
 
