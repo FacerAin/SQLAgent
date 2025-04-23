@@ -27,7 +27,7 @@ class BaseAgent(ABC):
         logger: Optional[logging.Logger] = None,
         log_to_file: bool = False,
         log_dir: str = "logs",
-        planning_interval=Optional[int],
+        planning_interval: Optional[int] = None,
     ):
         self.max_steps = max_steps
         self.client = client
