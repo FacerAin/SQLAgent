@@ -13,7 +13,13 @@ from src.agent.react import ToolReActAgent
 from src.chat.base import LLMClientInterface
 from src.chat.factory import ChatModelFactory
 from src.database.connector import BaseDatabaseConnector, SqliteDatabaseConnector
-from src.tool.base import CurrentDateTool, FinalAnswerTool, PythonTool, SQLTool
+from src.tool.base import (
+    CurrentDateTool,
+    FinalAnswerTool,
+    OracleTableVerifierTool,
+    PythonTool,
+    SQLTool,
+)
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
 
@@ -22,13 +28,21 @@ class EvaluationContext:
     """Context manager to handle logger setup and resources for evaluation."""
 
     SUPPORTED_AGENT_TYPES = {
-        "sql_react": ["SQLTool", "FinalAnswerTool", "CurrentDateTool"],
-        "python_react": ["PythonTool", "FinalAnswerTool", "CurrentDateTool"],
+        "sql_react": ["SQLTool", "FinalAnswerTool"],
+        "python_react": ["PythonTool", "FinalAnswerTool"],
         "python_sql_react": [
             "PythonTool",
             "SQLTool",
             "FinalAnswerTool",
-            "CurrentDateTool",
+        ],
+        "oracle_table_verifier": [
+            "SQLTool",
+            "OracleTableVerifierTool",
+            "FinalAnswerTool",
+        ],
+        "schema_free_sql_react": [
+            "SQLTool",
+            "FinalAnswerTool",
         ],
     }
 
@@ -104,6 +118,7 @@ class EvaluationContext:
             "PythonTool": PythonTool(db_connector=self.db_connector),
             "FinalAnswerTool": FinalAnswerTool(),
             "CurrentDateTool": CurrentDateTool(),
+            "OracleTableVerifierTool": OracleTableVerifierTool(),
         }
 
         # Select tools based on agent type
