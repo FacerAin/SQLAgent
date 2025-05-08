@@ -215,7 +215,7 @@ class SqliteDatabaseConnector(BaseDatabaseConnector):
                     months -= 1
 
                 return months
-            except:
+            except Exception:
                 return 0
 
         self.connection.create_function("months_between", 2, months_between)

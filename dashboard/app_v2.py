@@ -621,7 +621,7 @@ if data:
                                                             )
                                                         else:
                                                             tool_call = tool_call_text
-                                            except Exception as e:
+                                            except Exception:
                                                 tool_call = item_text
                                     elif isinstance(item, str):
                                         content_text += item + " "
@@ -687,7 +687,6 @@ if data:
                                         st.text(tool_call)
 
                                     # Try to prettify JSON for tool calls if possible
-                                    import json
 
                                     try:
                                         # Clean up the tool_call string before parsing
@@ -772,7 +771,7 @@ if data:
                                                         """,
                                                         unsafe_allow_html=True,
                                                     )
-                                    except Exception as e:
+                                    except Exception:
                                         # Just show the tool call nicely formatted
                                         st.markdown(
                                             """

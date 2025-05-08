@@ -4,12 +4,13 @@
 # Usage: ./scripts/run_evaluate.sh [--skip-generation] [--dataset mimic|eicu] [additional args]
 
 # Set default parameters
-PREFIX="eicu_schema_free"
-DATASET_TYPE="eicu"  # Default to mimic
+PREFIX="test"
+DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
 NUM_SAMPLES=-1 # Use -1 for all samples
 MAX_ITERATIONS=20
-PROMPT_PATH="src/prompts/baseline_no_description.yaml"
+# PROMPT_PATH="src/prompts/baseline_no_description.yaml"
+PROMPT_PATH="src/prompts/baseline_mimic.yaml"
 PLANNING_INTERVAL=0
 JUDGE_MODEL_ID="gpt-4.1-2025-04-14"
 
@@ -18,7 +19,7 @@ JUDGE_MODEL_ID="gpt-4.1-2025-04-14"
 MODEL_IDS=("gpt-4o")
 
 # Agent types to evaluate
-AGENT_TYPES=("schema_free_sql_react")
+AGENT_TYPES=("sql_react")
 # AGENT_TYPES=("python_react")
 
 # Parse our custom arguments first
@@ -42,14 +43,14 @@ done
 
 # Set paths based on dataset type
 if [[ "$DATASET_TYPE" == "mimic" ]]; then
-  # DATASET_PATH="data/evaluation/mimic_100.jsonl"
-  DATASET_PATH="data/legacy/test_50.jsonl"
+  DATASET_PATH="data/evaluation/mimic_100.jsonl"
+  # DATASET_PATH="data/legacy/test_50.jsonl"
   DATABASE="data/mimic_iii/mimic_iii.db"
   echo "Using MIMIC dataset"
 elif [[ "$DATASET_TYPE" == "eicu" ]]; then
-  # DATASET_PATH="data/evaluation/eicu_100.jsonl"
+  DATASET_PATH="data/evaluation/eicu_100.jsonl"
   DATABASE="data/eicu/eicu.db"
-  DATASET_PATH="data/legacy/eicu_test_50.jsonl"
+  # DATASET_PATH="data/legacy/eicu_test_50.jsonl"
   echo "Using eICU dataset"
 else
   echo "Invalid dataset type: $DATASET_TYPE. Using MIMIC as default."

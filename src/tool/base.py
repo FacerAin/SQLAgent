@@ -5,7 +5,6 @@ from copy import deepcopy
 from typing import Any, Dict, Union
 
 import pandas as pd
-from sqlglot import exp, parse
 
 from src.context import context_sample
 from src.database.connector import BaseDatabaseConnector
