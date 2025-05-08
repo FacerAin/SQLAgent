@@ -242,17 +242,12 @@ class MetricsCalculator:
         }
 
     def calculate_overall_stats(
-        self, evaluate_results: List[Dict[str, Any]], config: EvaluationConfig
+        self,
+        evaluate_results: List[Dict[str, Any]],
+        metadata: Dict[str, Any],
     ) -> EvaluationStats:
         """Calculate statistics for overall results"""
-        stats = EvaluationStats(
-            total_num=len(evaluate_results),
-            metadata={
-                "agent_type": config.agent.agent_type,
-                "model_id": config.model.model_id,
-                "dataset_path": config.data.dataset_path,
-            },
-        )
+        stats = EvaluationStats(total_num=len(evaluate_results), metadata=metadata)
 
         # Calculate aggregate metrics from individual sample metrics
         for sample in evaluate_results:

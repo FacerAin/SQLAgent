@@ -181,6 +181,10 @@ class EvaluationService:
         self.result_manager = ResultManager(config, self.logger)
         self.sample_processor = SampleProcessor(self.logger)
         self.metrics_calculator = MetricsCalculator()
+        self.skip_generation = self.config.skip_generation
+        self.skip_metrics = self.config.skip_metrics
+        self.save_result = self.config.save_result
+        self.logging_verbose = self.config.logging.verbose
 
     def run_evaluation(self) -> EvaluationResult:
         """Run the full evaluation process"""
@@ -188,7 +192,7 @@ class EvaluationService:
         existing_results, existing_ids = self.result_manager.load_existing_results()
 
         # Validate inputs
-        if self.config.skip_generation and not existing_results:
+        if self.skip_generation and not existing_results:
             self.logger.error(
                 "skip_generation option requires existing results in output_path"
             )
@@ -198,22 +202,28 @@ class EvaluationService:
         with EvaluationContext(self.config) as context:
             results = self._process_evaluation(context, existing_results, existing_ids)
 
+            metadata = {
+                "agent_type": self.config.agent.agent_type,
+                "model_id": self.config.model.model_id,
+                "dataset_path": self.config.data.dataset_path,
+            }
+
             # 3. Calculate metrics (if needed)
-            if results and not self.config.skip_metrics:
+            if results and not self.skip_metrics:
                 self.logger.info("Calculating evaluation metrics")
                 stats = self.metrics_calculator.calculate_overall_stats(
-                    results, self.config
+                    evaluate_results=results, metadata=metadata
                 )
 
                 # Log result summary
                 self._log_evaluation_summary(stats)
             else:
                 stats = None
-                if self.config.skip_metrics:
+                if self.skip_metrics:
                     self.logger.info("Skipping metrics calculation as requested")
 
             # 4. Save results (if needed)
-            if self.config.save_result:
+            if self.save_result:
                 self.result_manager.save_final_results(results, stats)
 
             return EvaluationResult(evaluation_history=results, metrics=stats)
@@ -228,7 +238,7 @@ class EvaluationService:
         results = existing_results
 
         # Only process samples if generation is not skipped
-        if not self.config.skip_generation:
+        if not self.skip_generation:
             if not existing_results:
                 # Process all samples if no existing results
                 self.logger.info("Processing all samples for evaluation")
@@ -243,7 +253,7 @@ class EvaluationService:
                 )
 
         # Add metrics to results if needed
-        if results and not self.config.skip_metrics:
+        if results and not self.skip_metrics:
             results = self.sample_processor.add_metrics_to_loaded_results(
                 results, context
             )
@@ -252,7 +262,7 @@ class EvaluationService:
 
     def _log_evaluation_summary(self, stats: EvaluationStats) -> None:
         """Log evaluation result summary"""
-        if not self.config.logging.verbose:
+        if not self.logging_verbose:
             # Log simple summary only
             self.logger.info(
                 f"Evaluation complete: accuracy = {stats.exact_match_rate:.4f}, "
