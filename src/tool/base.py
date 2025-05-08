@@ -5,8 +5,11 @@ from copy import deepcopy
 from typing import Any, Dict, Union
 
 import pandas as pd
+from sqlglot import exp, parse
 
+from src.context import context_sample
 from src.database.connector import BaseDatabaseConnector
+from src.utils.sql import extract_tables_from_query
 
 
 class BaseTool(ABC):
@@ -60,8 +63,16 @@ class BaseTool(ABC):
 class FinalAnswerTool(BaseTool):
     name = "final_answer"
     description = """
-    A tool for providing the final answer. Answers are typically concise (examples: po / True / 7 / 12.12 / 2103-12-23 07:20:00 / ceftriaxone, azithromycin, ciprofloxacin).
-    Make sure to use the terms exactly as they appear in the query results. If unanswerable, respond with 'Unanswerable'.
+     A tool for providing the final answer to the query. Answers should be precise and concise (examples: po / True / 7 / 12.12 / 2103-12-23 07:20:00 / ceftriaxone, azithromycin, ciprofloxacin).
+
+    Guidelines for good answers:
+    - Use exact terminology as it appears in the query results
+    - Keep answers brief and to the point
+    - For date/time values, maintain the exact format shown in results (YYYY-MM-DD HH:MM:SS)
+    - For medications or multiple items, separate with commas
+    - For numeric values, maintain the same precision as shown in results
+
+    If the question requires information not available in the database schema, respond with 'Unanswerable'.
     """
     parameters = {
         "answer": {"type": "string", "description": "The final answer string."},
@@ -156,6 +167,107 @@ class SQLTool(BaseTool):
             return results
 
         return results_str
+
+
+class OracleTableVerifierTool(BaseTool):
+    name = "table_verifier"
+    description = """
+    A tool for verifying if the correct tables have been selected for a database query.
+    This tool compares your selected tables with the tables needed for the correct query solution.
+    It returns information about missing tables (that should be included) and irrelevant tables (that are unnecessary).
+
+    IMPORTANT: You MUST use this tool at least once before calling final_answer to ensure you have selected the correct tables.
+
+    After receiving results from this tool:
+    1. If "is_missing_table" is True, explore additional tables that might be relevant to the query
+    2. If "irrelevant_table_names" contains tables, consider removing them from your query planning
+    3. Read the "description" field carefully for specific guidance on improving your query
+    4. Use these insights to refine your SQL query before finalizing it
+    5. If both checks pass (no missing or irrelevant tables), proceed with confidence in your table selection
+    """
+    parameters = {
+        "table_list": {
+            "type": "array",
+            "items": {"type": "string"},  # type: ignore
+            "description": "List of table names you want to verify as necessary for the query.",
+        },
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for selecting these tables and why you believe they're relevant to the query.",
+        },
+    }
+    output_type = str
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    def forward(self, table_list: list[str], **kwargs) -> str:
+        table_list = self._preprocess_table_names(table_list)
+        eval_sample = context_sample.get()
+        gold_sql_query = eval_sample.get("query")
+
+        if eval_sample is None:
+            return "Error: No sample provided for verification."
+
+        if gold_sql_query is None or gold_sql_query == "null":
+            return str(
+                {
+                    "is_missing_table": False,
+                    "irrelevant_table_names": [],
+                    "description": "Your table selection matches what's needed for this query. Now ensure you're using proper join conditions, filtering criteria, and aggregation methods. Don't forget to validate your results for clinical coherence. You're on the right track!",
+                }
+            )
+
+        gold_tables = self._preprocess_table_names(
+            extract_tables_from_query(gold_sql_query)
+        )
+
+        is_missing_table = any(list(set(gold_tables) - set(table_list)))
+        irrelevant_table_names = list(set(table_list) - set(gold_tables))
+        description = self._generate_description(
+            is_missing_table, irrelevant_table_names
+        )
+
+        # return values
+        return str(
+            {
+                "is_missing_table": is_missing_table,
+                "irrelevant_table_names": irrelevant_table_names,
+                "description": description,
+            }
+        )
+
+    def _preprocess_table_names(self, table_list: list[str]) -> list[str]:
+        """
+        Preprocess table names to ensure they are in a consistent format.
+        """
+        return [table.lower() for table in table_list]
+
+    def _generate_description(
+        self, is_missing_table: bool, irrelevant_table_names: list[str]
+    ) -> str:
+        """
+        Generate detailed natural language feedback based on table selection issues.
+        """
+        # Case 1: Both missing and irrelevant tables
+        if is_missing_table and irrelevant_table_names:
+            return "Your query needs significant restructuring. You're missing essential tables while including unnecessary ones. Consider completely rebuilding your query, focusing on the core tables needed to answer the clinical question. Try exploring additional tables that might establish relationships between data points and remove tables that don't contribute to the analysis."
+
+        # Case 2: Missing tables only
+        elif is_missing_table:
+            return "Your table selection is incomplete. Your query is missing essential tables needed to properly address the question. Explore additional tables that might establish important relationships or provide necessary context for your data. Consider looking at dictionary tables if you're working with codes or identifiers, or patient-related tables if you need demographic or admission information."
+
+        # Case 3: Irrelevant tables only
+        elif irrelevant_table_names:
+            return (
+                "Your query includes tables that may not be necessary: "
+                + ", ".join(irrelevant_table_names)
+                + ". Consider whether these tables truly add value or if they might introduce incorrect relationships or unnecessary complexity. Simplifying your query by focusing only on essential tables may improve both performance and accuracy."
+            )
+
+        # Case 4: Everything looks good
+        else:
+            return "Your table selection matches what's needed for this query. Now ensure you're using proper join conditions, filtering criteria, and aggregation methods. Don't forget to validate your results for clinical coherence. You're on the right track!"
 
 
 class PythonTool(BaseTool):
