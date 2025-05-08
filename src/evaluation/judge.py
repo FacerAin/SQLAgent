@@ -165,35 +165,42 @@ def verify_answer_by_llm(
         bool: True if the prediction is verified, False otherwise
     """
     prompt = f"""
-    Question: {question}
+        Question: {question}
 
-    Predicted Answer: {pred}
-    Reference Answer: {ans}
+        Predicted Answer: {pred}
+        Reference Answer: {ans}
 
-    Determine if the Predicted Answer is semantically equivalent to the Reference Answer for the given Question.
+        Determine if the Predicted Answer is semantically equivalent to the Reference Answer for the given Question.
 
-    ## Evaluation Guidelines:
-    1. BINARY ANSWER EQUIVALENCE:
-       - For yes/no questions, check if both answers reach the same conclusion
-       - Treat ["1", "yes", "true", "correct"] as equivalent positive responses
-       - Treat ["0", "no", "false", "incorrect"] as equivalent negative responses
+        ## Evaluation Guidelines:
+        1. BINARY ANSWER EQUIVALENCE:
+        - For yes/no questions, check if both answers reach the same conclusion
+        - Treat ["1", "yes", "true", "correct"] as equivalent positive responses
+        - Treat ["0", "no", "false", "incorrect"] as equivalent negative responses
 
-    2. CONTENT EQUIVALENCE:
-       - The Predicted Answer may contain additional details while still being correct
-       - Ignore formatting differences, exact wording, or extra explanations
-       - Focus on whether the core answer aligns with the reference
+        2. CONTENT EQUIVALENCE:
+        - The Predicted Answer may contain additional details while still being correct
+        - Ignore formatting differences, exact wording, or extra explanations
+        - Focus on whether the core answer aligns with the reference
 
-    3. MEDICAL CONTEXT:
-       - Consider medical terminology variations (e.g., "coronary arteriogram" and "coronary angiography")
-       - When specific medical codes (ICD, CPT, etc.) are mentioned, they can confirm equivalence
-       - For date-specific questions, the dates must match between answers
+        3. MEDICAL CONTEXT:
+        - Consider medical terminology variations (e.g., "coronary arteriogram" and "coronary angiography")
+        - When specific medical codes (ICD, CPT, etc.) are mentioned, they can confirm equivalence
+        - For date-specific questions, the dates must match between answers
 
-    ## Examples of equivalent answers:
-    - Reference: ["1"] and Predicted: "Yes, the patient has this condition"
-    - Reference: ["No evidence"] and Predicted: "The test results showed no evidence of disease"
-    - Reference: ["2105-01-23"] and Predicted: "The procedure was performed on January 23, 2105"
+        4. NUMERICAL ANSWERS:
+        - For integer-based answers, if the predicted answer contains decimal places but rounds to the same integer as the reference, consider them equivalent
+        - For measurements or calculated values, answers within 5% variance should be considered equivalent
+        - For counted days/time periods, treat the integer portion as the core information (e.g., "7" and "7.716667" would be considered equivalent)
 
-    Provide your judgment as 'True' if the answers are semantically equivalent or 'False' if they are not.
-    """
+        ## Examples of equivalent answers:
+        - Reference: ["1"] and Predicted: "Yes, the patient has this condition"
+        - Reference: ["No evidence"] and Predicted: "The test results showed no evidence of disease"
+        - Reference: ["2105-01-23"] and Predicted: "The procedure was performed on January 23, 2105"
+        - Reference: ["5"] and Predicted: "5.716667 days" (when counting time periods)
+        - Reference: ["120"] and Predicted: "118.5" (within 5% variance)
+
+        Provide your judgment as 'True' if the answers are semantically equivalent or 'False' if they are not.
+        """
     response = client.chat(messages=[{"role": "user", "content": prompt}])
     return exact_match(response.content, "True")
