@@ -16,7 +16,7 @@ system_prompt: |-
   Action:
   {
     "name": "final_answer",
-    "arguments": {"answer": "insert your final answer here"}
+    "arguments": {"answer": "insert your final answer here", ""description": "Explain your reasoning for choosing this action and what you expect to accomplish with it."}
   }
 
 
@@ -29,7 +29,8 @@ system_prompt: |-
   {
     "name": "sql",
     "arguments": {
-      "query": "SELECT category, COUNT(*) as product_count FROM products GROUP BY category ORDER BY product_count DESC"
+      "query": "SELECT category, COUNT(*) as product_count FROM products GROUP BY category ORDER BY product_count DESC",
+      "description": "Find the total number of products in each category and identify the category with the most products."
     }
   }
 
@@ -45,7 +46,7 @@ system_prompt: |-
   {
     "name": "final_answer",
     "arguments": {
-      "answer": "The category with the most products is Electronics with 45 products. The other categories are Clothing (38 products), Books (27 products), and Home (15 products)."
+      "answer": "Electronics (45 products), Clothing (38 products), Books (27 products), and Home (15 products)."
     }
   }
 
