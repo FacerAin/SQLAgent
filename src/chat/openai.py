@@ -27,6 +27,7 @@ class OpenAIClient(LLMClientInterface):
         stop_sequences: Optional[List[str]] = None,
         grammar: Optional[str] = None,
         tools_to_call_from: Optional[List[BaseTool]] = None,
+        temperature: float = 0.0,
         **kwargs: Any,
     ) -> ChatMessage:
         completion_kwargs = self._prepare_completion_kwargs(
@@ -35,6 +36,7 @@ class OpenAIClient(LLMClientInterface):
             grammar=grammar,
             tools_to_call_from=tools_to_call_from,
             model=self.model_id,
+            temperature=temperature,
             **kwargs,
         )
         response = self.client.chat.completions.create(**completion_kwargs)

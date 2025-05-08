@@ -209,6 +209,7 @@ class LLMClientInterface:
         stop_sequences: Optional[List[str]] = None,
         grammar: Optional[str] = None,
         tools_to_call_from: Optional[List[BaseTool]] = None,
+        temperature: float = 0.0,
         **kwargs: Any,
     ) -> Dict:
         """
@@ -228,6 +229,7 @@ class LLMClientInterface:
         completion_kwargs = {
             **self.kwargs,
             "messages": messages,
+            "temperature": temperature,
         }
 
         # Handle specific parameters

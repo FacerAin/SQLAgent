@@ -10,6 +10,9 @@ class ChatModelFactory:
         "gpt-4": OpenAIClient,
         "gpt-4o-mini": OpenAIClient,
         "o3-mini": OpenAIReasoningClient,
+        "gpt-4.1-nano-2025-04-14": OpenAIClient,
+        "gpt-4.1-mini-2025-04-14": OpenAIClient,
+        "gpt-4.1-2025-04-14": OpenAIClient,
     }
 
     @classmethod
