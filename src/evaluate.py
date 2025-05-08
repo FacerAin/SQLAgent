@@ -1,5 +1,6 @@
 import argparse
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional, Set
 
 from tqdm import tqdm
@@ -14,8 +15,6 @@ from src.evaluation.base import (
     ResultManager,
 )
 from src.utils.logger import init_logger
-
-# --- Configuration Classes ---
 
 
 class SampleProcessor:
@@ -178,7 +177,11 @@ class EvaluationService:
             log_to_file=config.log_to_file,
             log_dir=config.log_dir,
         )
-        self.result_manager = ResultManager(config, self.logger)
+        self.result_manager = ResultManager(
+            logger=self.logger,
+            output_path=config.output.output_path,
+            save_enabled=config.save_result,
+        )
         self.sample_processor = SampleProcessor(self.logger)
         self.metrics_calculator = MetricsCalculator()
         self.skip_generation = self.config.skip_generation
@@ -202,14 +205,13 @@ class EvaluationService:
         with EvaluationContext(self.config) as context:
             results = self._process_evaluation(context, existing_results, existing_ids)
 
-            metadata = {
-                "agent_type": self.config.agent.agent_type,
-                "model_id": self.config.model.model_id,
-                "dataset_path": self.config.data.dataset_path,
-            }
-
             # 3. Calculate metrics (if needed)
             if results and not self.skip_metrics:
+                metadata = {
+                    "agent_type": self.config.agent.agent_type,
+                    "model_id": self.config.model.model_id,
+                    "dataset_path": self.config.data.dataset_path,
+                }
                 self.logger.info("Calculating evaluation metrics")
                 stats = self.metrics_calculator.calculate_overall_stats(
                     evaluate_results=results, metadata=metadata
@@ -224,7 +226,19 @@ class EvaluationService:
 
             # 4. Save results (if needed)
             if self.save_result:
-                self.result_manager.save_final_results(results, stats)
+                metadata = {
+                    "model_id": self.config.model_id,
+                    "agent_type": self.config.agent.agent_type,
+                    "max_steps": str(self.config.agent.max_iterations),
+                    "judge_model_id": self.config.judge_model_id,
+                    "database": self.config.data.database,
+                    "dataset_path": self.config.data.dataset_path,
+                    "num_samples": str(self.config.data.num_samples),
+                    "timestamp": datetime.now().isoformat(),
+                    "prompt_path": self.config.agent.prompt_path,
+                }
+
+                self.result_manager.save_final_results(results, stats, metadata)
 
             return EvaluationResult(evaluation_history=results, metrics=stats)
 

@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
@@ -481,12 +480,11 @@ class EvaluationResult:
 class ResultManager:
     """Result loading, saving, and management"""
 
-    def __init__(self, config: EvaluationConfig, logger: logging.Logger):
+    def __init__(self, logger: logging.Logger, output_path: str, save_enabled: bool):
         """Initialize"""
-        self.config = config
         self.logger = logger
-        self.output_path = config.output.output_path
-        self.save_enabled = config.save_result
+        self.output_path = output_path
+        self.save_enabled = save_enabled
 
         # Create result directory if needed
         if self.save_enabled and self.output_path:
@@ -550,6 +548,7 @@ class ResultManager:
         self,
         evaluate_results: List[Dict[str, Any]],
         evaluation_stats: Optional[EvaluationStats] = None,
+        metadata: Dict[str, Any] = None,
     ) -> None:
         """Save final results and statistics"""
         if not self.save_enabled or not self.output_path:
@@ -561,17 +560,7 @@ class ResultManager:
         result = EvaluationResult(
             evaluation_history=evaluate_results,
             metrics=evaluation_stats,
-            metadata={
-                "model_id": self.config.model_id,
-                "agent_type": self.config.agent.agent_type,
-                "max_steps": self.config.agent.max_iterations,
-                "judge_model_id": self.config.judge_model_id,
-                "database": self.config.data.database,
-                "dataset_path": self.config.data.dataset_path,
-                "num_samples": self.config.data.num_samples,
-                "timestamp": datetime.now().isoformat(),
-                "prompt_path": self.config.agent.prompt_path,
-            },
+            metadata=metadata,
         )
 
         # Save results
