@@ -38,7 +38,7 @@ class ToolReActAgent(BaseAgent):
             logger=logger,
             log_to_file=log_to_file,
             log_dir=log_dir,
-            planning_interval=planning_interval,
+            planning_interval=planning_interval if planning_interval > 0 else 0,
         )
 
     def run(self, task: str, stream: bool = False, reset: bool = True) -> Any:
@@ -80,7 +80,7 @@ class ToolReActAgent(BaseAgent):
         while self.step_num <= max_steps and final_answer is None:
             start_time = time.time()
             self.logger.info(f"Executing step {self.step_num}/{max_steps}")
-            if self.planning_interval is not None and (
+            if (self.planning_interval > 0) and (
                 self.step_num == 1 or (self.step_num - 1) % self.planning_interval == 0
             ):
                 planning_step = self._create_planning_step(
