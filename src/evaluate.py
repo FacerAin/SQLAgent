@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from tqdm import tqdm
 
 from src.chat.base import LLMClientInterface
+from src.context import context_sample
 from src.evaluation.base import EvaluationContext, EvaluationResult, EvaluationStats
 from src.evaluation.judge import (
     exact_match,
@@ -289,6 +290,7 @@ class SampleProcessor:
         evaluate_results = []
 
         for sample in tqdm(context.datasets, desc="Evaluating samples", unit="sample"):
+            context_sample.set(sample)  # Set the current sample in context
             sample_result = SampleProcessor._process_single_sample(sample, context)
             evaluate_results.append(sample_result)
 
@@ -392,6 +394,7 @@ class SampleProcessor:
         for sample in tqdm(
             samples_to_process, desc="Evaluating missing samples", unit="sample"
         ):
+            context_sample.set(sample)  # Set the current sample in context
             sample_result = SampleProcessor._process_single_sample(sample, context)
             all_results.append(sample_result)
 
