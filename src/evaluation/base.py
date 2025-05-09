@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
@@ -13,6 +12,7 @@ from src.agent.react import ToolReActAgent
 from src.chat.base import LLMClientInterface
 from src.chat.factory import ChatModelFactory
 from src.database.connector import BaseDatabaseConnector, SqliteDatabaseConnector
+from src.evaluation.config import EvaluationConfig
 from src.evaluation.judge import (
     exact_match,
     normalize_exact_match,
@@ -21,154 +21,13 @@ from src.evaluation.judge import (
 from src.tool.base import (
     CurrentDateTool,
     FinalAnswerTool,
+    LLMTableVerifierTool,
     OracleTableVerifierTool,
     PythonTool,
     SQLTool,
 )
 from src.utils.load import load_dataset_from_jsonl
 from src.utils.logger import init_logger
-
-
-@dataclass
-class ModelConfig:
-    """Model-related configuration"""
-
-    model_id: str = "gpt-4o-mini"
-    judge_model_id: Optional[str] = None
-
-
-@dataclass
-class DataConfig:
-    """Data source configuration"""
-
-    dataset_path: str = "data/valid_preprocessed.jsonl"
-    database: str = "data/mimic_iii/mimic_iii.db"
-    custom_time: str = "2105-12-31 23:59:00"
-    num_samples: int = 3
-
-
-@dataclass
-class AgentConfig:
-    """Agent configuration"""
-
-    agent_type: str = "sql_react"
-    max_iterations: int = 5
-    use_few_shot: bool = False
-    prompt_path: str = "src/prompts/react.yaml"
-    planning_interval: int = 20
-
-
-@dataclass
-class OutputConfig:
-    """Output configuration"""
-
-    output_path: str = "results/{model_id}_{agent_type}_{num_samples}.json"
-    save_result: bool = False
-    continue_from: Optional[str] = None
-
-
-@dataclass
-class ProcessingConfig:
-    """Processing configuration"""
-
-    skip_metrics: bool = False
-    skip_generation: bool = False
-
-
-@dataclass
-class LoggingConfig:
-    """Logging configuration"""
-
-    verbose: bool = False
-    log_to_file: bool = False
-    log_dir: str = "logs"
-
-
-@dataclass
-class EvaluationConfig:
-    """Integrated evaluation configuration"""
-
-    model: ModelConfig = field(default_factory=ModelConfig)
-    data: DataConfig = field(default_factory=DataConfig)
-    agent: AgentConfig = field(default_factory=AgentConfig)
-    output: OutputConfig = field(default_factory=OutputConfig)
-    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
-    logging: LoggingConfig = field(default_factory=LoggingConfig)
-
-    # Properties for frequently accessed attributes
-    @property
-    def model_id(self) -> str:
-        return self.model.model_id
-
-    @property
-    def judge_model_id(self) -> str:
-        if self.model.judge_model_id is None:
-            return self.model.model_id
-        return self.model.judge_model_id
-
-    @property
-    def skip_metrics(self) -> bool:
-        return self.processing.skip_metrics
-
-    @property
-    def skip_generation(self) -> bool:
-        return self.processing.skip_generation
-
-    @property
-    def save_result(self) -> bool:
-        return self.output.save_result
-
-    @property
-    def log_to_file(self) -> bool:
-        return self.logging.log_to_file
-
-    @property
-    def log_dir(self) -> str:
-        return self.logging.log_dir
-
-    @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "EvaluationConfig":
-        """Create EvaluationConfig from argparse Namespace"""
-        # Convert argparse results to EvaluationConfig
-        config = cls(
-            model=ModelConfig(
-                model_id=args.model_id,
-                judge_model_id=args.judge_model_id,
-            ),
-            data=DataConfig(
-                dataset_path=args.dataset_path,
-                database=args.database,
-                custom_time=args.custom_time,
-                num_samples=args.num_samples,
-            ),
-            agent=AgentConfig(
-                agent_type=args.agent_type,
-                max_iterations=args.max_iterations,
-                use_few_shot=args.use_few_shot,
-                prompt_path=args.prompt_path,
-                planning_interval=args.planning_interval,
-            ),
-            output=OutputConfig(
-                output_path=args.output_path,
-                save_result=args.save_result,
-                continue_from=args.continue_from,
-            ),
-            processing=ProcessingConfig(
-                skip_metrics=args.skip_metrics,
-                skip_generation=args.skip_generation,
-            ),
-            logging=LoggingConfig(
-                verbose=args.verbose,
-                log_to_file=args.log_to_file,
-                log_dir=args.log_dir,
-            ),
-        )
-
-        # Use continue_from as output_path if set
-        if config.output.continue_from:
-            config.output.output_path = config.output.continue_from
-
-        return config
 
 
 @dataclass
@@ -294,6 +153,11 @@ class EvaluationContext:
             "FinalAnswerTool",
         ],
         "schema_free_sql_react": ["SQLTool", "FinalAnswerTool"],
+        "llm_table_verifier": [
+            "SQLTool",
+            "LLMTableVerifierTool",
+            "FinalAnswerTool",
+        ],
     }
 
     def __init__(self, config: EvaluationConfig) -> None:
@@ -370,6 +234,7 @@ class EvaluationContext:
             "FinalAnswerTool": FinalAnswerTool(),
             "CurrentDateTool": CurrentDateTool(),
             "OracleTableVerifierTool": OracleTableVerifierTool(),
+            "LLMTableVerifierTool": LLMTableVerifierTool(model="gpt-4.1"),
         }
 
         # Select tools based on agent type
@@ -481,12 +346,11 @@ class EvaluationResult:
 class ResultManager:
     """Result loading, saving, and management"""
 
-    def __init__(self, config: EvaluationConfig, logger: logging.Logger):
+    def __init__(self, logger: logging.Logger, output_path: str, save_enabled: bool):
         """Initialize"""
-        self.config = config
         self.logger = logger
-        self.output_path = config.output.output_path
-        self.save_enabled = config.save_result
+        self.output_path = output_path
+        self.save_enabled = save_enabled
 
         # Create result directory if needed
         if self.save_enabled and self.output_path:
@@ -550,6 +414,7 @@ class ResultManager:
         self,
         evaluate_results: List[Dict[str, Any]],
         evaluation_stats: Optional[EvaluationStats] = None,
+        metadata: Dict[str, Any] = None,
     ) -> None:
         """Save final results and statistics"""
         if not self.save_enabled or not self.output_path:
@@ -561,17 +426,7 @@ class ResultManager:
         result = EvaluationResult(
             evaluation_history=evaluate_results,
             metrics=evaluation_stats,
-            metadata={
-                "model_id": self.config.model_id,
-                "agent_type": self.config.agent.agent_type,
-                "max_steps": self.config.agent.max_iterations,
-                "judge_model_id": self.config.judge_model_id,
-                "database": self.config.data.database,
-                "dataset_path": self.config.data.dataset_path,
-                "num_samples": self.config.data.num_samples,
-                "timestamp": datetime.now().isoformat(),
-                "prompt_path": self.config.agent.prompt_path,
-            },
+            metadata=metadata,
         )
 
         # Save results

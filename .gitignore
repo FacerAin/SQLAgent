@@ -4,6 +4,7 @@ results/
 notebooks/draft.ipynb
 logs/
 notebooks/
+analysis_results/
 
 
 # Byte-compiled / optimized / DLL files

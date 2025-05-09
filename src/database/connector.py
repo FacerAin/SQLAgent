@@ -47,7 +47,7 @@ class SqliteDatabaseConnector(BaseDatabaseConnector):
         self.connection: Optional[sqlite3.Connection] = None
         self.custom_time = custom_time or "2105-12-31 23:59:00"  # Set default value
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self) -> sqlite3.Connection:  # noqa
         if not os.path.exists(self.db_path):
             raise FileNotFoundError(f"Database file '{self.db_path}' not found.")
         self.connection = sqlite3.connect(self.db_path)
