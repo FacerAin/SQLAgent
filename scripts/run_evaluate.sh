@@ -4,22 +4,22 @@
 # Usage: ./scripts/run_evaluate.sh [--skip-generation] [--dataset mimic|eicu] [additional args]
 
 # Set default parameters
-PREFIX="test"
+PREFIX="llm_table_temporal_v1"
 DATASET_TYPE="mimic"  # Default to mimic
 SKIP_GENERATION=false
 NUM_SAMPLES=-1 # Use -1 for all samples
 MAX_ITERATIONS=20
 # PROMPT_PATH="src/prompts/baseline_no_description.yaml"
-PROMPT_PATH="src/prompts/baseline_mimic.yaml"
+PROMPT_PATH="src/prompts/baseline_mimic_verifier_time_desc.yaml"
 PLANNING_INTERVAL=0
 JUDGE_MODEL_ID="gpt-4.1-2025-04-14"
 
 # Models to evaluate
 # MODEL_IDS=("gpt-4.1-mini-2025-04-14" "gpt-4.1-nano-2025-04-14")
-MODEL_IDS=("gpt-4o")
+MODEL_IDS=("gpt-4.1-mini-2025-04-14" "gpt-4.1-nano-2025-04-14")
 
 # Agent types to evaluate
-AGENT_TYPES=("sql_react")
+AGENT_TYPES=("llm_table_verifier")
 # AGENT_TYPES=("python_react")
 
 # Parse our custom arguments first

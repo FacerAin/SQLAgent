@@ -9,6 +9,7 @@ import pandas as pd
 from src.context import context_sample
 from src.database.connector import BaseDatabaseConnector
 from src.utils.sql import extract_tables_from_query
+from src.utils.verifier import SimpleTableDetector
 
 
 class BaseTool(ABC):
@@ -166,6 +167,91 @@ class SQLTool(BaseTool):
             return results
 
         return results_str
+
+
+class LLMTableVerifierTool(BaseTool):
+    name = "llm_table_verifier"
+    description = """
+    A tool for verifying if the correct tables have been selected for a database query.
+    This tool compares your selected tables with the tables needed for the correct query solution.
+    It returns information about missing tables (that should be included) and irrelevant tables (that are unnecessary).
+
+    IMPORTANT: You MUST use this tool at least once before calling final_answer to ensure you have selected the correct tables.
+
+    After receiving results from this tool:
+    1. If "is_missing_table" is True, explore additional tables that might be relevant to the query
+    2. If "irrelevant_table_names" contains tables, consider removing them from your query planning
+    3. Read the "description" field carefully for specific guidance on improving your query
+    4. Use these insights to refine your SQL query before finalizing it
+    5. If both checks pass (no missing or irrelevant tables), proceed with confidence in your table selection
+    """
+    parameters = {
+        "table_list": {
+            "type": "array",
+            "items": {"type": "string"},  # type: ignore
+            "description": "List of table names you want to verify as necessary for the query.",
+        },
+        "thought": {
+            "type": "string",
+            "description": "Explain your reasoning for selecting these tables and why you believe they're relevant to the query.",
+        },
+    }
+    output_type = str
+
+    def __init__(self, model: str = "gpt-4.1", *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.model = model
+        self.llm_verifier = SimpleTableDetector(model=self.model)
+
+    def forward(self, table_list: list[str], **kwargs) -> str:
+        eval_sample = context_sample.get()
+        question = eval_sample.get("question")
+        result = self.llm_verifier.detect_tables(
+            question=question,
+            input_tables=table_list,
+        )
+
+        is_missing_table = result["is_missing_table"]
+        irrelevant_table_names = result["irrelevant_table_names"]
+
+        # Generate a description based on the results
+        description = self._generate_description(
+            is_missing_table, irrelevant_table_names
+        )
+        # Return values
+        return str(
+            {
+                "is_missing_table": is_missing_table,
+                "irrelevant_table_names": irrelevant_table_names,
+                "description": description,
+            }
+        )
+
+    def _generate_description(
+        self, is_missing_table: bool, irrelevant_table_names: list[str]
+    ) -> str:
+        """
+        Generate detailed natural language feedback based on table selection issues.
+        """
+        # Case 1: Both missing and irrelevant tables
+        if is_missing_table and irrelevant_table_names:
+            return "Your query needs significant restructuring. You're missing essential tables while including unnecessary ones. Consider completely rebuilding your query, focusing on the core tables needed to answer the clinical question. Try exploring additional tables that might establish relationships between data points and remove tables that don't contribute to the analysis."
+
+        # Case 2: Missing tables only
+        elif is_missing_table:
+            return "Your table selection is incomplete. Your query is missing essential tables needed to properly address the question. Explore additional tables that might establish important relationships or provide necessary context for your data. Consider looking at dictionary tables if you're working with codes or identifiers, or patient-related tables if you need demographic or admission information."
+
+        # Case 3: Irrelevant tables only
+        elif irrelevant_table_names:
+            return (
+                "Your query includes tables that may not be necessary: "
+                + ", ".join(irrelevant_table_names)
+                + ". Consider whether these tables truly add value or if they might introduce incorrect relationships or unnecessary complexity. Simplifying your query by focusing only on essential tables may improve both performance and accuracy."
+            )
+
+        # Case 4: Everything looks good
+        else:
+            return "Your table selection matches what's needed for this query. Now ensure you're using proper join conditions, filtering criteria, and aggregation methods. Don't forget to validate your results for clinical coherence. You're on the right track!"
 
 
 class OracleTableVerifierTool(BaseTool):
