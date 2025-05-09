@@ -20,6 +20,8 @@ SQL-R1 creates AI agents capable of:
 - **Evaluation Framework**: Comprehensive metrics for agent performance assessment
 - **Database Connector**: Specialized connector for SQLite with custom time handling
 - **Agent Memory Management**: Track reasoning steps and maintain context
+- **Confidence Checking**: Evaluate trustworthiness of agent responses with score metrics
+- **LLM Verifier Tools**: Validate SQL queries and table selection before execution
 
 ## Installation
 
@@ -117,16 +119,24 @@ print(result)
 
 # Customize evaluation
 python -m src.evaluate --model_id "gpt-4o" --dataset_path "data/test_50.jsonl" --agent_type "sql_react" --num_samples 10 --save_result
+
+# Run confidence checking on evaluation results
+./scripts/run_confidence.sh
+
+# Custom confidence checking
+python -m src.post_evaluate --input_file "results/your_results.json" --model "gpt-4.1"
 ```
 
 ## Project Structure
 
 - **src/agent/**: Agent implementations (ReAct pattern)
 - **src/chat/**: LLM client interfaces for different models
+- **src/confidence/**: Confidence checking and trust evaluation
 - **src/database/**: Database connectors (SQLite)
 - **src/tool/**: Tools for agents (SQL, Python, Answer generation)
 - **src/prompts/**: Prompt templates for agents
 - **src/evaluation/**: Evaluation metrics and judges
+- **src/utils/**: Utility functions including SQL verifiers
 - **scripts/**: Run scripts for different experiments
 - **data/**: Data files and sample datasets
 - **results/**: Evaluation results
@@ -136,6 +146,21 @@ python -m src.evaluate --model_id "gpt-4o" --dataset_path "data/test_50.jsonl" -
 - `sql_react`: Uses ReAct methodology with SQL tool only
 - `python_react`: Uses ReAct methodology with Python execution tool
 - `python_sql_react`: Combined approach with both SQL and Python tools
+
+## Advanced Features
+
+### Confidence Checking
+
+- **Trust Scoring**: Evaluates the reliability of agent responses on a 0-4 scale
+- **Probability Distribution**: Analyzes response confidence using logprobs
+- **Post-Evaluation Tool**: Batch processing for retroactive confidence scoring
+- **Weighted Scoring**: Provides nuanced confidence metrics beyond binary correctness
+
+### LLM Verifier Tools
+
+- **Table Detection**: Identifies missing or irrelevant tables for SQL queries
+- **Query Validation**: Verifies if the database schema supports answering the question
+- **Pre-execution Checks**: Reduces errors by validating queries before database execution
 
 ## Examples
 
