@@ -1,12 +1,11 @@
-# SQL-R1 (Working Title)
+# SQLAgent
 
-SQL-R1 is a framework for building and evaluating language model-powered SQL agents that can interact with databases through natural language. It's designed to test different agent architectures and LLM capabilities for medical database querying.
+SQLAgent is a framework for building and evaluating language model-powered SQL agents that can interact with databases through natural language. It's designed to test different agent architectures and LLM capabilities for medical database querying.
 
-> **Note**: SQL-R1 is currently a working title for this project.
 
 ## Project Purpose
 
-SQL-R1 creates AI agents capable of:
+SQLAgent creates AI agents capable of:
 - Converting natural language questions to SQL queries
 - Executing queries against a medical database (MIMIC-III)
 - Evaluating agent performance with various metrics
